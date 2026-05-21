@@ -22,22 +22,21 @@ from netranext_client.netranext.utils.validators import validate_required_fields
 def validate_sync_request():
     """
     Validate that the request comes from a legitimate central server
-    Checks API key and secret from request headers
+    Checks Integration Token from request headers
     """
-    # Get API credentials from headers
-    api_key = frappe.get_request_header("X-NetraNext-API-Key")
-    api_secret = frappe.get_request_header("X-NetraNext-API-Secret")
+    incoming_token = frappe.get_request_header("X-NetraNext-Token")
 
-    if not api_key or not api_secret:
-        tenant_bench_logger.warning("Sync request without API credentials", "SYNC_VALIDATION")
-        raise AuthenticationException("Missing API credentials. Please provide X-NetraNext-API-Key and X-NetraNext-API-Secret headers.")
+    if not incoming_token:
+        tenant_bench_logger.warning("Sync request without Integration Token", "SYNC_VALIDATION")
+        raise AuthenticationException("Missing Integration Token. Please provide X-NetraNext-Token header.")
 
-    # Validate API credentials
-    # In production, this should validate against stored tenant credentials
-    # For now, we'll accept any non-empty credentials for development
-    if not api_key.strip() or not api_secret.strip():
-        tenant_bench_logger.warning(f"Sync request with invalid API credentials", "SYNC_VALIDATION")
-        raise AuthenticationException("Invalid API credentials")
+    # Get stored token
+    settings = frappe.get_single("NetraNext Settings")
+    stored_token = settings.get_password("api_key")
+
+    if not stored_token or incoming_token != stored_token:
+        tenant_bench_logger.warning(f"Sync request with invalid Integration Token. Incoming: '{incoming_token}', Stored: '{stored_token}'", "SYNC_VALIDATION")
+        raise AuthenticationException("Invalid Integration Token")
 
     tenant_bench_logger.debug("Sync request validated successfully", "SYNC_VALIDATION")
     return True

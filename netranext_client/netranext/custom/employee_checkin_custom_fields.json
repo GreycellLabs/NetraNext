@@ -71,6 +71,7 @@
 			"field_name": "skip_auto_attendance",
 			"property": "insert_after",
 			"property_type": "Data",
+			"doctype_or_field": "DocField",
 			"value": "log_type_col"
 		}
 	],
