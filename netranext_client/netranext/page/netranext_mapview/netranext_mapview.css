@@ -1,0 +1,298 @@
+/* NetraNext Map View - Modern Journey Dashboard Styling */
+:root {
+    --j-primary: #6366f1;
+    --j-primary-dark: #4f46e5;
+    --j-primary-light: #eef2ff;
+    --j-bg: #f8fafc;
+    --j-card: #ffffff;
+    --j-text: #0f172a;
+    --j-text-muted: #64748b;
+    --j-border: #e2e8f0;
+    --j-success: #10b981;
+    --j-warning: #f59e0b;
+    --j-danger: #ef4444;
+    --j-radius: 16px;
+    --j-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+.journey-map-view {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--j-bg);
+    height: calc(100vh - 108px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Hide standard Frappe menu button */
+.page-head .menu-btn-group,
+.page-head .btn-section-actions,
+.page-head [data-label="Menu"],
+.page-head .standard-actions {
+    display: none !important;
+}
+
+.filter-bar {
+    background: #ffffff;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--j-border);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    z-index: 10;
+}
+
+/* Layout Main */
+.map-view-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Sidebar Styling */
+.journey-sidebar {
+    width: 400px;
+    background: white;
+    border-right: 1px solid var(--j-border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.journey-list-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+/* Journey Card */
+.journey-card {
+    background: #ffffff;
+    border: 1px solid var(--j-border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+.journey-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    border-color: var(--j-primary);
+}
+
+.journey-card.selected {
+    background: var(--j-primary-light);
+    border-color: var(--j-primary);
+}
+
+.journey-card-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.journey-card-emp {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--j-text);
+}
+
+.journey-card-dist {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--j-primary);
+    background: var(--j-primary-light);
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+
+.journey-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--j-text-muted);
+}
+
+.journey-card-time {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Map Section */
+.map-content {
+    flex: 1;
+    position: relative;
+}
+
+#journey-map {
+    width: 100%;
+    height: 100%;
+}
+
+/* Map Floating Overlays */
+.map-overlay-controls {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    gap: 8px;
+}
+
+.map-overlay-stats {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    z-index: 1000;
+    background: white;
+    padding: 12px 20px;
+    border-radius: 12px;
+    box-shadow: var(--j-shadow);
+    border: 1px solid var(--j-border);
+}
+
+/* Inputs & Buttons */
+.j-input {
+    padding: 8px 12px;
+    border: 1px solid var(--j-border);
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.j-input:focus {
+    border-color: var(--j-primary);
+}
+
+.j-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid var(--j-border);
+    background: white;
+    color: var(--j-text);
+}
+
+.j-btn:hover {
+    background: var(--j-bg);
+}
+
+.j-btn-primary {
+    background: var(--j-primary);
+    color: white;
+    border-color: var(--j-primary);
+}
+
+.j-btn-primary:hover {
+    background: var(--j-primary-dark);
+}
+
+/* Marker Icons */
+.custom-map-marker {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));
+}
+
+.custom-map-marker:hover {
+    transform: scale(1.2) translateY(-2px);
+    z-index: 1000 !important;
+}
+
+.custom-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Rich Popup Styling */
+.rich-popup {
+    min-width: 220px;
+    padding: 4px;
+    font-family: inherit;
+}
+
+.popup-header {
+    padding: 0 0 8px 0;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--j-border);
+}
+
+.popup-title {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--j-text-muted);
+    margin-bottom: 2px;
+}
+
+.popup-subtitle {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--j-text);
+}
+
+.popup-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.popup-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+}
+
+.popup-info-row .label {
+    color: var(--j-text-muted);
+    font-weight: 500;
+}
+
+.popup-info-row .val {
+    color: var(--j-text);
+    font-weight: 600;
+}
+
+.leaflet-popup-content-wrapper {
+    border-radius: 12px;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.journey-card {
+    animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .journey-sidebar {
+        width: 320px;
+    }
+}
+
+@media (max-width: 768px) {
+    .map-view-body {
+        flex-direction: column-reverse;
+    }
+    .journey-sidebar {
+        width: 100%;
+        height: 40%;
+    }
+}

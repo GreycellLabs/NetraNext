@@ -1,0 +1,722 @@
+// NetraNext Dashboard Page - Based on FaceTrace Dashboard Design
+
+// NetraNext API Configuration
+window.NetraNextConfig = {
+    apiBaseUrl: 'http://127.0.0.1:8000',
+    endpoints: {
+        dashboard: '/api/method/netranext.apis.v1.dashboard.get_dashboard_data'
+    }
+};
+
+// Store data globally for filtering
+window.dashboardData = {
+    journeys: [],
+    attendance: [],
+    summary: {}
+};
+
+// Helper: Get today's date in YYYY-MM-DD format
+function get_today_date() {
+    var today = new Date();
+    var dd = String(today.getDate()).padStart(2, '0');
+    var mm = String(today.getMonth() + 1).padStart(2, '0');
+    var yyyy = today.getFullYear();
+    return yyyy + '-' + mm + '-' + dd;
+}
+
+var todayDate = get_today_date();
+
+// Store current filters including pagination
+window.currentFilters = {
+    journey: { status: 'all', dateFrom: todayDate, dateTo: todayDate, employee: '', page: 1 },
+    attendance: { status: 'all', dateFrom: todayDate, dateTo: todayDate, employee: '', page: 1 },
+    limit: 10
+};
+
+// Helper: Format time to 12-hour (AM/PM)
+function format_time_12hr(timeStr) {
+    if (!timeStr || timeStr === '-' || timeStr === 'Pending...') return timeStr;
+    var parts = timeStr.trim().split(':');
+    if (parts.length < 2) return timeStr;
+
+    var hours = parseInt(parts[0]);
+    var minutes = parts[1];
+    var ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // '0' becomes '12'
+    return (hours < 10 ? '0' + hours : hours) + ':' + minutes + ' ' + ampm;
+}
+
+// Filtering helper functions
+function filter_journeys(data, status) {
+    if (!data) return [];
+    if (!status || status === 'all') return data;
+    return data.filter(j => j.status === status);
+}
+
+function filter_attendance(data, status) {
+    if (!data) return [];
+    if (!status || status === 'all') return data;
+    return data.filter(a => a.log_type === status);
+}
+
+function filter_by_employee(data, employee) {
+    if (!data) return [];
+    if (!employee) return data;
+    return data.filter(item => (item.employee === employee || item.employee_name === employee));
+}
+
+function filter_by_date(data, from, to, type) {
+    if (!data) return [];
+    var dateField = type === 'journey' ? 'start_time' : 'attendance_date';
+    return data.filter(item => {
+        var val = item[dateField] || '';
+        var dateVal = val.split(' ')[0];
+        if (from && dateVal < from) return false;
+        if (to && dateVal > to) return false;
+        return true;
+    });
+}
+
+frappe.pages['netranext-dashboard'].on_page_load = function (wrapper) {
+    // Standard Frappe Page Initialization
+    var page = frappe.ui.make_app_page({
+        parent: wrapper,
+        title: __('NetraNext Dashboard'),
+        single_column: true
+    });
+
+    // Clear wrapper to prevent duplicate content (if re-loading)
+    $(page.main).empty();
+
+    // Add primary actions
+    page.set_primary_action(__('Refresh'), () => refresh_dashboard_data(), 'refresh');
+
+    // Create sections in standard Frappe layout
+    var main_section = $(`
+        <div class="netranext-dashboard">
+            <div id="stats-section" class="section">
+                <div id="number-cards" class="stats-grid"></div>
+            </div>
+
+            <div id="journey-table" class="section">
+                <div class="section-header">
+                    <h3 style="cursor: pointer; color: #1a202c;" onclick="frappe.set_route('netranext-mapview')" onmouseover="this.style.color='#6366f1'" onmouseout="this.style.color='#1a202c'">
+                        Journeys <i class="fa fa-map-o" style="font-size: 14px; margin-left: 4px; vertical-align: middle; opacity: 0.7;"></i>
+                    </h3>
+                    <div class="filter-controls">
+                        <div class="right-filters">
+                            <select id="journey-employee" class="employee-select">
+                                <option value="">All Employees</option>
+                            </select>
+                            <div class="date-filters">
+                                <input type="date" id="journey-date-from" class="date-input" placeholder="From">
+                                <input type="date" id="journey-date-to" class="date-input" placeholder="To">
+                                <button class="clear-date-btn" data-type="journey">Clear</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="journey-content"></div>
+            </div>
+
+            <div id="attendance-table" class="section">
+                <div class="section-header">
+                    <h3>Attendance Logs</h3>
+                    <div class="filter-controls">
+                        <div class="right-filters">
+                            <select id="attendance-employee" class="employee-select">
+                                <option value="">All Employees</option>
+                            </select>
+                            <div class="date-filters">
+                                <input type="date" id="attendance-date-from" class="date-input" placeholder="From">
+                                <input type="date" id="attendance-date-to" class="date-input" placeholder="To">
+                                <button class="clear-date-btn" data-type="attendance">Clear</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="attendance-content"></div>
+            </div>
+
+            <div id="quick-links-section" class="section">
+                <div class="shortcuts-columns">
+                    <div class="shortcut-group">
+                        <h4 class="group-title">Employee Onboard Flow</h4>
+                        <div id="onboard-flow-content" class="shortcut-list"></div>
+                    </div>
+                    <div class="shortcut-group">
+                        <h4 class="group-title">Helpful Links</h4>
+                        <div id="helpful-links-content" class="shortcut-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).appendTo(page.main);
+
+    // Initial loader skeleton
+    if (!$('#dashboard-loader').length) {
+        $('body').append(`
+            <div id="dashboard-loader">
+                <div class="loader-spinner"></div>
+                <div class="loader-text">Loading Dashboard...</div>
+            </div>
+        `);
+    }
+
+    // Initialize default dates in UI
+    $('#journey-date-from').val(window.currentFilters.journey.dateFrom);
+    $('#journey-date-to').val(window.currentFilters.journey.dateTo);
+    $('#attendance-date-from').val(window.currentFilters.attendance.dateFrom);
+    $('#attendance-date-to').val(window.currentFilters.attendance.dateTo);
+
+    // Load dashboard data from NetraNext API
+    load_dashboard_data_from_api();
+
+    // Event listeners
+    $(document).off('change', '#journey-employee').on('change', '#journey-employee', function () {
+        window.currentFilters.journey.employee = $(this).val();
+        window.currentFilters.journey.page = 1;
+        // Reload data from API with new employee filter
+        load_dashboard_with_filters();
+    });
+
+    $(document).off('change', '#attendance-employee').on('change', '#attendance-employee', function () {
+        window.currentFilters.attendance.employee = $(this).val();
+        window.currentFilters.attendance.page = 1;
+        // Sync journey employee filter and reload data
+        $('#journey-employee').val($(this).val());
+        window.currentFilters.journey.employee = $(this).val();
+        load_dashboard_with_filters();
+    });
+
+    $(document).off('change', '#journey-date-from, #journey-date-to').on('change', '#journey-date-from, #journey-date-to', function () {
+        window.currentFilters.journey.dateFrom = $('#journey-date-from').val();
+        window.currentFilters.journey.dateTo = $('#journey-date-to').val();
+        window.currentFilters.journey.page = 1;
+        // Reload data from API with new date range
+        load_dashboard_with_filters();
+    });
+
+    $(document).off('change', '#attendance-date-from, #attendance-date-to').on('change', '#attendance-date-from, #attendance-date-to', function () {
+        window.currentFilters.attendance.dateFrom = $('#attendance-date-from').val();
+        window.currentFilters.attendance.dateTo = $('#attendance-date-to').val();
+        window.currentFilters.attendance.page = 1;
+        // Reload data from API with new date range
+        load_dashboard_with_filters();
+    });
+
+    $(document).off('click', '.pagination-btn').on('click', '.pagination-btn', function () {
+        var type = $(this).data('type');
+        var direction = $(this).data('direction');
+        if (direction === 'next') window.currentFilters[type].page++;
+        else if (direction === 'prev' && window.currentFilters[type].page > 1) window.currentFilters[type].page--;
+        apply_filters(type);
+    });
+
+    $(document).off('click', '.clear-date-btn').on('click', '.clear-date-btn', function () {
+        var type = $(this).data('type');
+        $(`#${type}-date-from`).val('');
+        $(`#${type}-date-to`).val('');
+        window.currentFilters[type].dateFrom = '';
+        window.currentFilters[type].dateTo = '';
+        window.currentFilters[type].page = 1;
+        // Reload data from API with cleared date filters
+        load_dashboard_with_filters();
+    });
+
+    console.log("NetraNext Dashboard loaded successfully");
+};
+
+// Load real data from NetraNext API
+function load_dashboard_data_from_api() {
+    set_loading(true);
+
+    // For now, use a simple loading approach without complex authentication
+    // The central server should be accessible for API calls
+    load_dashboard_with_filters();
+}
+
+// Load dashboard data with current filters
+function load_dashboard_with_filters() {
+    set_loading(true);
+
+    // Get current filter values
+    var journeyFilters = window.currentFilters.journey;
+    var attendanceFilters = window.currentFilters.attendance;
+
+    // Use journey date range for API call (both journeys and attendance)
+    var dateFrom = journeyFilters.dateFrom || get_today_date();
+    var dateTo = journeyFilters.dateTo || get_today_date();
+
+    // Call NetraNext dashboard API via HTTP to central server
+    // Note: This calls the external NetraNext server, not local methods
+    $.ajax({
+        url: window.NetraNextConfig.apiBaseUrl + window.NetraNextConfig.endpoints.dashboard,
+        type: 'POST',
+        {
+            date_from: dateFrom,
+            date_to: dateTo,
+            employee_id: journeyFilters.employee || attendanceFilters.employee || null
+        },
+        success: function(response) {
+            set_loading(false);
+
+            if (response && response.status === 'success') {
+                var data = response.data || {};
+
+                // Store data globally
+                window.dashboardData = {
+                    journeys: data.journeys || [],
+                    attendance: data.attendance || [],
+                    summary: data.summary || {},
+                    all_employees: data.all_employees || [],
+                    total_journeys: data.total_journeys || 0,
+                    total_attendance: data.total_attendance || 0
+                };
+
+                // Populate dropdowns and render dashboard
+                populate_employee_dropdowns();
+                render_dashboard(window.dashboardData);
+
+                frappe.msgprint(__('Dashboard data loaded successfully'));
+            } else {
+                // Handle error
+                var errorMsg = response ? response.message : 'Failed to load dashboard data';
+                handle_api_error(errorMsg);
+            }
+        },
+        error: function(xhr, status, error) {
+            set_loading(false);
+            handle_api_error('Failed to connect to NetraNext API server. Please check if the central server is running on port 8000.');
+        }
+    });
+}
+
+// Handle API errors consistently
+function handle_api_error(message) {
+    frappe.msgprint({
+        title: __('NetraNext API Error'),
+        indicator: 'red',
+        message: __(message)
+    });
+
+    // Show empty state
+    window.dashboardData = {
+        journeys: [],
+        attendance: [],
+        summary: {
+            total_employees: 0,
+            new_hires_this_year: 0,
+            present_today: 0
+        },
+        all_employees: [],
+        total_journeys: 0,
+        total_attendance: 0
+    };
+
+    populate_employee_dropdowns();
+    render_dashboard(window.dashboardData);
+}
+
+// Populate employee dropdowns with all system employees
+function populate_employee_dropdowns() {
+    var employees = {};
+
+    // Use all_employees from API response to ensure complete coverage
+    (window.dashboardData.all_employees || []).forEach(function (emp) {
+        if (emp.name) {
+            employees[emp.name] = emp.employee_name || emp.name;
+        }
+    });
+
+    // Fallback: Check journeys and attendance if all_employees is empty
+    if (Object.keys(employees).length === 0) {
+        (window.dashboardData.journeys || []).forEach(function (j) {
+            if (j.employee) {
+                var empName = j.employee_name || j.employee;
+                employees[j.employee] = empName;
+            }
+        });
+        (window.dashboardData.attendance || []).forEach(function (a) {
+            if (a.employee) {
+                var empName = a.employee_name || a.employee;
+                employees[a.employee] = empName;
+            }
+        });
+    }
+
+    // Populate journey dropdown
+    var journeySelect = $('#journey-employee');
+    journeySelect.find('option:not(:first)').remove();
+    Object.keys(employees).sort().forEach(function (empId) {
+        var empName = employees[empId];
+        journeySelect.append('<option value="' + empId + '">' + empName + '</option>');
+    });
+
+    // Populate attendance dropdown
+    var attendanceSelect = $('#attendance-employee');
+    attendanceSelect.find('option:not(:first)').remove();
+    Object.keys(employees).sort().forEach(function (empId) {
+        var empName = employees[empId];
+        attendanceSelect.append('<option value="' + empId + '">' + empName + '</option>');
+    });
+}
+
+// Apply all filters for a given type
+function apply_filters(type) {
+    var filters = window.currentFilters[type];
+
+    // For employee filter, reload data from API with the employee filter
+    if (filters.employee || filters.dateFrom || filters.dateTo) {
+        // Reload data with new filters
+        load_dashboard_with_filters();
+    } else {
+        // If no specific filters, just filter existing data
+        var data = type === 'journey' ? window.dashboardData.journeys : window.dashboardData.attendance;
+
+        // Apply status filter
+        var filtered = type === 'journey'
+            ? filter_journeys(data, filters.status)
+            : filter_attendance(data, filters.status);
+
+        // Apply employee filter
+        if (filters.employee) {
+            filtered = filter_by_employee(filtered, filters.employee);
+        }
+
+        // Apply date filter
+        if (filters.dateFrom || filters.dateTo) {
+            filtered = filter_by_date(filtered, filters.dateFrom, filters.dateTo, type);
+        }
+
+        // Render filtered data
+        if (type === 'journey') {
+            render_journey_table(filtered);
+        } else {
+            render_attendance_table(filtered);
+        }
+    }
+}
+
+// Toggle loading overlay
+function set_loading(show) {
+    if (show) {
+        $('#dashboard-loader').css('display', 'flex').hide().fadeIn(200);
+    } else {
+        $('#dashboard-loader').fadeOut(200);
+    }
+}
+
+// Refresh data from server
+function refresh_dashboard_data() {
+    load_dashboard_with_filters();
+}
+
+// Render pagination controls
+function render_pagination(type, totalCount, currentPage) {
+    var limit = window.currentFilters.limit;
+    var totalPages = Math.ceil(totalCount / limit) || 1;
+    var start = ((currentPage - 1) * limit) + 1;
+    var end = Math.min(currentPage * limit, totalCount);
+
+    if (totalCount === 0) return '';
+
+    return `
+        <div class="pagination-container" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: #fafbfc; border-top: 1px solid #f0f0f0;">
+            <div class="pagination-info" style="font-size: 13px; color: #718096; font-weight: 500;">
+                Showing <span style="color: #4a5568; font-weight: 700;">${start}-${end}</span> of <span style="color: #4a5568; font-weight: 700;">${totalCount}</span> records
+            </div>
+            <div class="pagination-actions" style="display: flex; gap: 8px;">
+                <button class="pagination-btn" data-type="${type}" data-direction="prev" ${currentPage === 1 ? 'disabled' : ''}
+                    style="padding: 6px 14px; border-radius: 6px; border: 1px solid #e2e8f0; background: ${currentPage === 1 ? '#f8fafc' : '#fff'}; cursor: ${currentPage === 1 ? 'not-allowed' : 'pointer'}; color: ${currentPage === 1 ? '#cbd5e0' : '#4a5568'}; font-size: 12px; font-weight: 600; transition: all 0.2s;">
+                    ← Previous
+                </button>
+                <div style="display: flex; align-items: center; padding: 0 10px; font-size: 13px; color: #4a5568; font-weight: 600;">
+                    Page ${currentPage} of ${totalPages}
+                </div>
+                <button class="pagination-btn" data-type="${type}" data-direction="next" ${currentPage >= totalPages ? 'disabled' : ''}
+                    style="padding: 6px 14px; border-radius: 6px; border: 1px solid #e2e8f0; background: ${currentPage >= totalPages ? '#f8fafc' : '#fff'}; cursor: ${currentPage >= totalPages ? 'not-allowed' : 'pointer'}; color: ${currentPage >= totalPages ? '#cbd5e0' : '#4a5568'}; font-size: 12px; font-weight: 600; transition: all 0.2s;">
+                    Next →
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function render_dashboard(data) {
+    console.log("Dashboard data received:", data);
+
+    var summary = data.summary || {};
+
+    // Render Statistics (Number Card Style)
+    var statsHTML = '';
+    var cardMetrics = [
+        { label: 'TOTAL EMPLOYEES', value: summary.total_employees, color: '#6366f1' },
+        { label: 'NEW HIRES (YEAR)', value: summary.new_hires_this_year, color: '#a855f7' },
+        { label: 'PRESENT TODAY', value: summary.present_today, color: '#3b82f6' }
+    ];
+
+    cardMetrics.forEach(m => {
+        statsHTML += `
+            <div class="stat-card-premium">
+                <div class="stat-card-header">
+                    <span class="stat-label">${__(m.label)}</span>
+                </div>
+                <div class="stat-value-large">${m.value || 0}</div>
+            </div>
+        `;
+    });
+    document.getElementById("number-cards").innerHTML = statsHTML;
+
+    // Render Your Shortcuts - Column 1: Employee Onboard Flow
+    var onboardHTML = `
+        <div class="shortcut-item" onclick="frappe.new_doc('User')">
+            <span class="shortcut-label">Add User</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
+        <div class="shortcut-item" onclick="frappe.new_doc('Employee')">
+            <span class="shortcut-label">Add Employee</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
+        <div class="shortcut-item" onclick="frappe.set_route('List', 'User')">
+            <span class="shortcut-label">Manage Users</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
+        <div class="shortcut-item" onclick="frappe.set_route('List', 'Employee')">
+            <span class="shortcut-label">Manage Employees</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
+    `;
+
+    // Render Your Shortcuts - Column 2: Helpful Links
+    var helpfulHTML = `
+        <div class="shortcut-item" onclick="frappe.set_route('List', 'User')">
+            <span class="shortcut-label">All Users</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
+        <div class="shortcut-item" onclick="frappe.set_route('List', 'Employee')">
+            <span class="shortcut-label">All Employees</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
+        <div class="shortcut-item" onclick="frappe.set_route('netranext-mapview')">
+            <span class="shortcut-label">Journey Map</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
+        <div class="shortcut-item" onclick="frappe.set_route('netranext-dashboard')">
+            <span class="shortcut-label">Dashboard</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
+    `;
+
+    document.getElementById("onboard-flow-content").innerHTML = onboardHTML;
+    document.getElementById("helpful-links-content").innerHTML = helpfulHTML;
+
+    // Render tables
+    render_journey_table(data.journeys || []);
+    render_attendance_table(data.attendance || []);
+}
+
+// Render journey list in Frappe style (without sidebar)
+function render_journey_table(journeys) {
+    var totalCount = window.dashboardData.total_journeys || 0;
+    var currentPage = window.currentFilters.journey.page;
+
+    var html = `
+        <div class="list-main" style="border: 1px solid #ebf0f5; border-radius: 8px; overflow: hidden; background: #fff;">
+            <div class="list-items">
+                <div class="list-item-container list-item-header">
+                    <div style="flex: 1.2;">ID / Employee</div>
+                    <div style="flex: 1;">Date / Times</div>
+                    <div style="flex: 2;">Route (Start → End)</div>
+                    <div style="flex: 0.8; text-align: right;">Distance</div>
+                </div>
+    `;
+
+    if (journeys.length > 0) {
+        journeys.forEach(function (j) {
+            var journeyId = j.name || '-';
+            var empName = j.employee_name || j.employee || '-';
+            var dateTime = (j.start_time || '').split(' ');
+            var dateStr = dateTime[0] || '-';
+            var startTime = dateTime[1] ? format_time_12hr(dateTime[1]) : '-';
+            var endTime = j.end_time ? format_time_12hr(j.end_time.split(' ')[1]) : 'Active';
+            var startAddr = j.start_location || '-';
+            var endAddr = j.end_location || '-';
+            var distance = j.distance_km ? `${j.distance_km} km` : '-';
+
+            html += `
+                <div class="list-item-container" onclick="frappe.set_route('netranext-mapview', { journey_id: '${journeyId}' })" style="cursor: pointer; align-items: flex-start; padding: 14px 18px;">
+                    <div style="flex: 1.2; padding-right: 15px;">
+                        <span style="color: #6366f1; font-weight: 700; display: block; font-size: 14.5px;">${journeyId}</span>
+                        <span style="font-size: 13px; color: #4a5568; margin-top: 2px; display: block;">${empName}</span>
+                    </div>
+                    <div style="flex: 1;">
+                        <span style="font-weight: 700; color: #1a202c; display: block; font-size: 14px;">${dateStr}</span>
+                        <span style="font-size: 13px; color: #718096; margin-top: 2px; display: block;">${startTime} - ${endTime}</span>
+                    </div>
+                    <div style="flex: 2; padding-right: 15px;">
+                        <div style="font-size: 14px; color: #1a202c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${startAddr}">
+                            <i class="fa fa-map-marker" style="color: #10b981; width: 14px;"></i> ${startAddr}
+                        </div>
+                        <div style="font-size: 14px; color: #718096; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 5px;" title="${endAddr}">
+                            <i class="fa fa-map-marker" style="color: #ef4444; width: 14px;"></i> ${endAddr}
+                        </div>
+                    </div>
+                    <div style="flex: 0.8; text-align: right;">
+                        <span class="badge" style="background: #f1f5f9; color: #475569; font-weight: 700; padding: 6px 10px; border-radius: 6px; font-size: 13px;">${distance}</span>
+                    </div>
+                </div>
+            `;
+        });
+    } else {
+        html += `<div style="padding: 40px; text-align: center; color: #a0aec0;">No records found</div>`;
+    }
+
+    html += `
+            </div>
+            <div class="list-footer">
+                ${render_pagination_v2('journey', totalCount, currentPage)}
+            </div>
+        </div>
+    `;
+
+    document.getElementById("journey-content").innerHTML = html;
+}
+
+// Render attendance list in Frappe style (without sidebar)
+function render_attendance_table(attendance) {
+    var totalCount = window.dashboardData.total_attendance || 0;
+    var currentPage = window.currentFilters.attendance.page;
+
+    var html = `
+        <div class="list-main" style="border: 1px solid #ebf0f5; border-radius: 8px; overflow: hidden; background: #fff;">
+            <div class="list-items">
+                <div class="list-item-container list-item-header">
+                    <div style="flex: 1;">Employee</div>
+                    <div style="flex: 0.8;">Date</div>
+                    <div style="flex: 2;">Time Logs (In → Out)</div>
+                    <div style="flex: 0.8; text-align: right;">Total Hours</div>
+                </div>
+    `;
+
+    if (attendance.length > 0) {
+        var now = new Date();
+        var windowStart = 8 * 60; // 08:00 AM in minutes
+        var windowEnd = 20 * 60;  // 08:00 PM in minutes
+        var windowTotal = windowEnd - windowStart;
+
+        attendance.forEach(function (entry) {
+            var empName = entry.employee_name || entry.employee || '-';
+            var dateStr = entry.attendance_date || '-';
+            var timelineHTML = '';
+            var totalMinutes = 0;
+
+            if (entry.logs && entry.logs.length > 0) {
+                var currentIn = null;
+                var currentInTime = '';
+                var segments = [];
+
+                entry.logs.forEach(function (log) {
+                    var logTime = log.time || '00:00:00';
+                    var t = logTime.split(':');
+                    var mins = parseInt(t[0]) * 60 + parseInt(t[1]);
+
+                    if (log.log_type === 'IN') {
+                        currentIn = mins;
+                        currentInTime = logTime;
+                    } else if (log.log_type === 'OUT' && currentIn !== null) {
+                        var duration = mins - currentIn;
+                        if (duration > 0) totalMinutes += duration;
+
+                        segments.push({
+                            in: currentInTime,
+                            out: logTime,
+                            duration: duration
+                        });
+                        currentIn = null;
+                    }
+                });
+
+                // If still checked in
+                if (currentIn !== null) {
+                    var isToday = dateStr === get_today_date();
+                    var endMins = isToday ? (now.getHours() * 60 + now.getMinutes()) : 1439;
+                    var duration = endMins - currentIn;
+                    if (duration > 0) totalMinutes += duration;
+
+                    segments.push({
+                        in: currentInTime,
+                        out: 'Active',
+                        duration: duration
+                    });
+                }
+
+                timelineHTML = segments.map(s => {
+                    var outStr = s.out === 'Active' ? '<span style="color: #10b981; font-weight: 700;">Active</span>' : format_time_12hr(s.out);
+                    return `
+                        <div style="display: inline-block; background: #f8fafc; border: 1px solid #e2e8f0; padding: 4px 10px; border-radius: 6px; margin: 0 6px 6px 0; font-size: 12.5px; color: #475569; font-weight: 600;">
+                            ${format_time_12hr(s.in)} <span style="color: #cbd5e0; margin: 0 4px;">→</span> ${outStr}
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            var hours = Math.floor(totalMinutes / 60);
+            var mins = totalMinutes % 60;
+            var totalHoursStr = totalMinutes > 0 ? `${hours}h ${mins}m` : '-';
+
+            html += `
+                <div class="list-item-container" style="align-items: flex-start; padding: 14px 18px;">
+                    <div style="flex: 1; font-weight: 700; color: #1a202c; font-size: 14.5px;">${empName}</div>
+                    <div style="flex: 0.8; font-size: 14px; color: #718096;">${dateStr}</div>
+                    <div style="flex: 2;">
+                        <div style="display: flex; flex-wrap: wrap;">
+                            ${timelineHTML || '<span style="color: #cbd5e0; font-style: italic; font-size: 13px;">No logs</span>'}
+                        </div>
+                    </div>
+                    <div style="flex: 0.8; text-align: right;">
+                        <span style="font-weight: 700; color: #475569; font-size: 14.5px;">${totalHoursStr}</span>
+                    </div>
+                </div>
+            `;
+        });
+    } else {
+        html += `<div style="padding: 40px; text-align: center; color: #a0aec0;">No records found</div>`;
+    }
+
+    html += `
+            </div>
+            <div class="list-footer">
+                ${render_pagination_v2('attendance', totalCount, currentPage)}
+            </div>
+        </div>
+    `;
+
+    document.getElementById("attendance-content").innerHTML = html;
+}
+
+// New pagination render specifically for the List View footer
+function render_pagination_v2(type, totalCount, currentPage) {
+    var limit = window.currentFilters.limit;
+    var totalPages = Math.ceil(totalCount / limit) || 1;
+
+    if (totalCount === 0) return '0 of 0';
+
+    return `
+        <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+            <div style="flex-grow: 1;">${totalCount} total</div>
+            <div style="display: flex; gap: 4px;">
+                <button class="pagination-btn" data-type="${type}" data-direction="prev" ${currentPage === 1 ? 'disabled' : ''}
+                    style="background: none; border: 1px solid #d1d8e0; border-radius: 4px; padding: 2px 8px; color: ${currentPage === 1 ? '#cbd5e0' : '#4a5568'}; cursor: pointer;">
+                    <i class="fa fa-chevron-left"></i>
+                </button>
+                <div style="padding: 2px 8px;">${currentPage} / ${totalPages}</div>
+                <button class="pagination-btn" data-type="${type}" data-direction="next" ${currentPage >= totalPages ? 'disabled' : ''}
+                    style="background: none; border: 1px solid #d1d8e0; border-radius: 4px; padding: 2px 8px; color: ${currentPage >= totalPages ? '#cbd5e0' : '#4a5568'}; cursor: pointer;">
+                    <i class="fa fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    `;
+}

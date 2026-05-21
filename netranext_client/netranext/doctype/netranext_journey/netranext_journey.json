@@ -1,0 +1,218 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "format:JOURNEY-{#####}",
+ "creation": "2025-01-01 00:00:00",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "journey_name",
+  "status",
+  "section_break_0",
+  "flutter_journey_id",
+  "user_id",
+  "column_break_0",
+  "section_break_1",
+  "start_time",
+  "end_time",
+  "distance_km",
+  "duration_seconds",
+  "column_break_1",
+  "start_location",
+  "end_location",
+  "section_break_2",
+  "encoded_polyline",
+  "column_break_2",
+  "original_points_count",
+  "simplified_points_count",
+  "section_break_3",
+  "metadata",
+  "raw_gps_data"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "journey_name",
+   "fieldtype": "Data",
+   "label": "Journey Name",
+   "length": 512,
+   "reqd": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "In Progress\nCompleted\nCancelled",
+   "default": "In Progress"
+  },
+  {
+   "fieldname": "section_break_0",
+   "fieldtype": "Section Break",
+   "label": "Flutter Integration"
+  },
+  {
+   "fieldname": "flutter_journey_id",
+   "fieldtype": "Data",
+   "label": "Flutter Journey ID",
+   "read_only": 1,
+   "description": "UUID from Flutter app"
+  },
+  {
+   "fieldname": "user_id",
+   "fieldtype": "Data",
+   "label": "User ID",
+   "read_only": 1,
+   "description": "User ID from Flutter app"
+  },
+  {
+   "fieldname": "column_break_0",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break",
+   "label": "Journey Details"
+  },
+  {
+   "fieldname": "start_time",
+   "fieldtype": "Datetime",
+   "label": "Start Time",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "end_time",
+   "fieldtype": "Datetime",
+   "label": "End Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "distance_km",
+   "fieldtype": "Float",
+   "label": "Distance (km)",
+   "read_only": 1,
+   "precision": "2",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "duration_seconds",
+   "fieldtype": "Float",
+   "label": "Duration (seconds)",
+   "read_only": 1,
+   "precision": "0",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "start_location",
+   "fieldtype": "Data",
+   "label": "Start Location",
+   "read_only": 1
+  },
+  {
+   "fieldname": "end_location",
+   "fieldtype": "Data",
+   "label": "End Location",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_2",
+   "fieldtype": "Section Break",
+   "label": "GPS Data"
+  },
+  {
+   "fieldname": "encoded_polyline",
+   "fieldtype": "Code",
+   "label": "Encoded Polyline",
+   "read_only": 1,
+   "options": "Text"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "original_points_count",
+   "fieldtype": "Int",
+   "label": "Original Points",
+   "read_only": 1
+  },
+  {
+   "fieldname": "simplified_points_count",
+   "fieldtype": "Int",
+   "label": "Simplified Points",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_3",
+   "fieldtype": "Section Break",
+   "label": "Additional Data"
+  },
+  {
+   "fieldname": "metadata",
+   "fieldtype": "Code",
+   "label": "Metadata",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "raw_gps_data",
+   "fieldtype": "Code",
+   "label": "Raw GPS Data",
+   "options": "JSON",
+   "hidden": 1
+  }
+ ],
+ "hide_toolbar": 0,
+ "icon": "icon-road",
+ "idx": 0,
+ "is_submittable": 0,
+ "modified": "2025-01-01 00:00:00",
+ "modified_by": "Administrator",
+ "module": "NetraNext",
+ "name": "NetraNext Journey",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Employee",
+   "share": 0,
+   "write": 0
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "controller": "netranext.doctype.netranext_journey.netranext_journey"
+}

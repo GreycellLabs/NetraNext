@@ -1,0 +1,171 @@
+{
+ "actions": [],
+ "allow_import": 0,
+ "allow_rename": 0,
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "tenant_name",
+  "api_credentials_section",
+  "api_key",
+  "api_secret",
+  "central_server_url",
+  "connection_status",
+  "sync_settings_section",
+  "auto_sync_enabled",
+  "sync_interval_minutes",
+  "last_sync_timestamp",
+  "feature_flags_section",
+  "enable_face_recognition",
+  "enable_gps_tracking",
+  "enable_attendance_marking",
+  "advanced_settings_section",
+  "cache_duration",
+  "max_request_retries",
+  "request_timeout",
+  "enable_debug_logging"
+ ],
+ "fields": [
+  {
+   "fieldname": "tenant_name",
+   "fieldtype": "Data",
+   "label": "Tenant Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "api_credentials_section",
+   "fieldtype": "Section Break",
+   "label": "API Credentials"
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key",
+   "reqd": 1
+  },
+  {
+   "fieldname": "api_secret",
+   "fieldtype": "Password",
+   "label": "API Secret",
+   "reqd": 1
+  },
+  {
+   "fieldname": "central_server_url",
+   "fieldtype": "Data",
+   "label": "Central Server URL",
+   "options": "URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "connection_status",
+   "fieldtype": "Select",
+   "label": "Connection Status",
+   "options": "Connected\nDisconnected\nError",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sync_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Sync Settings"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_sync_enabled",
+   "fieldtype": "Check",
+   "label": "Auto Sync Enabled"
+  },
+  {
+   "default": "5",
+   "fieldname": "sync_interval_minutes",
+   "fieldtype": "Int",
+   "label": "Sync Interval (minutes)"
+  },
+  {
+   "fieldname": "last_sync_timestamp",
+   "fieldtype": "Datetime",
+   "label": "Last Sync Timestamp",
+   "read_only": 1
+  },
+  {
+   "fieldname": "feature_flags_section",
+   "fieldtype": "Section Break",
+   "label": "Feature Flags"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_face_recognition",
+   "fieldtype": "Check",
+   "label": "Enable Face Recognition"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_gps_tracking",
+   "fieldtype": "Check",
+   "label": "Enable GPS Tracking"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_attendance_marking",
+   "fieldtype": "Check",
+   "label": "Enable Attendance Marking"
+  },
+  {
+   "fieldname": "advanced_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Advanced Settings"
+  },
+  {
+   "default": "3600",
+   "fieldname": "cache_duration",
+   "fieldtype": "Int",
+   "label": "Cache Duration (seconds)"
+  },
+  {
+   "default": "3",
+   "fieldname": "max_request_retries",
+   "fieldtype": "Int",
+   "label": "Max Request Retries"
+  },
+  {
+   "default": "30",
+   "fieldname": "request_timeout",
+   "fieldtype": "Int",
+   "label": "Request Timeout (seconds)"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_debug_logging",
+   "fieldtype": "Check",
+   "label": "Enable Debug Logging"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "NetraNext",
+ "name": "NetraNext Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "HR Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

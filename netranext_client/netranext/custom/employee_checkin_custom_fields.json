@@ -1,0 +1,78 @@
+{
+	"custom_fields": [
+		{
+			"fieldname": "log_type_col",
+			"fieldtype": "Column Break",
+			"insert_after": "log_type",
+			"dt": "Employee Checkin"
+		},
+		{
+			"fieldname": "attendance_proof_section",
+			"fieldtype": "Section Break",
+			"label": "Attendance Proof",
+			"insert_after": "skip_auto_attendance",
+			"dt": "Employee Checkin"
+		},
+		{
+			"fieldname": "photo_proof",
+			"fieldtype": "Attach Image",
+			"label": "Photo Proof",
+			"insert_after": "attendance_proof_section",
+			"hidden": 0,
+			"reqd": 0,
+			"read_only": 1,
+			"description": "Actual photo captured during attendance",
+			"dt": "Employee Checkin"
+		},
+		{
+			"fieldname": "attendance_proof_col",
+			"fieldtype": "Column Break",
+			"insert_after": "photo_proof",
+			"dt": "Employee Checkin"
+		},
+		{
+			"fieldname": "location_address",
+			"fieldtype": "Text",
+			"label": "Location Address",
+			"insert_after": "attendance_proof_col",
+			"hidden": 0,
+			"reqd": 0,
+			"read_only": 1,
+			"dt": "Employee Checkin"
+		},
+		{
+			"fieldname": "latitude",
+			"fieldtype": "Float",
+			"label": "Latitude",
+			"insert_after": "location_address",
+			"hidden": 1,
+			"reqd": 0,
+			"read_only": 1,
+			"precision": "8",
+			"dt": "Employee Checkin"
+		},
+		{
+			"fieldname": "longitude",
+			"fieldtype": "Float",
+			"label": "Longitude",
+			"insert_after": "latitude",
+			"hidden": 1,
+			"reqd": 0,
+			"read_only": 1,
+			"precision": "8",
+			"dt": "Employee Checkin"
+		}
+	],
+	"custom_perms": [],
+	"doctype": "Employee Checkin",
+	"property_setters": [
+		{
+			"doc_type": "Employee Checkin",
+			"field_name": "skip_auto_attendance",
+			"property": "insert_after",
+			"property_type": "Data",
+			"value": "log_type_col"
+		}
+	],
+	"sync_on_migrate": 1
+}

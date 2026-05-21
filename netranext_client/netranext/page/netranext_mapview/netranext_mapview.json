@@ -1,0 +1,28 @@
+{
+ "content": null,
+ "creation": "2026-05-18 16:15:15.550706",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-05-19 18:09:19.331525",
+ "modified_by": "Administrator",
+ "module": "NetraNext",
+ "name": "netranext-mapview",
+ "owner": "Administrator",
+ "page_name": "netranext-mapview",
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "HR Manager"
+  },
+  {
+   "role": "HR User"
+  }
+ ],
+ "script": "netranext_mapview.js",
+ "standard": "Yes",
+ "style": "netranext_mapview.css",
+ "system_page": 1
+}
