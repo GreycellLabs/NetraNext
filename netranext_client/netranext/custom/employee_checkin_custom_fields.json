@@ -39,28 +39,6 @@
 			"reqd": 0,
 			"read_only": 1,
 			"dt": "Employee Checkin"
-		},
-		{
-			"fieldname": "latitude",
-			"fieldtype": "Float",
-			"label": "Latitude",
-			"insert_after": "location_address",
-			"hidden": 1,
-			"reqd": 0,
-			"read_only": 1,
-			"precision": "8",
-			"dt": "Employee Checkin"
-		},
-		{
-			"fieldname": "longitude",
-			"fieldtype": "Float",
-			"label": "Longitude",
-			"insert_after": "latitude",
-			"hidden": 1,
-			"reqd": 0,
-			"read_only": 1,
-			"precision": "8",
-			"dt": "Employee Checkin"
 		}
 	],
 	"custom_perms": [],
