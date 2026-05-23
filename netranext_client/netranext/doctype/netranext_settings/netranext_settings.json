@@ -8,8 +8,10 @@
  "issingle": 1,
  "field_order": [
   "tenant_name",
+  "tenant_id",
   "column_break_top",
   "central_server_url",
+  "status",
   "api_credentials_section",
   "api_key",
   "api_secret",
@@ -28,6 +30,12 @@
    "reqd": 1
   },
   {
+   "fieldname": "tenant_id",
+   "fieldtype": "Data",
+   "label": "Tenant ID",
+   "read_only": 1
+  },
+  {
    "fieldname": "column_break_top",
    "fieldtype": "Column Break"
   },
@@ -39,7 +47,7 @@
   {
    "fieldname": "api_key",
    "fieldtype": "Password",
-   "label": "Integration Token",
+   "label": "API Key",
    "reqd": 1
   },
   {
@@ -58,7 +66,16 @@
    "fieldtype": "Data",
    "label": "Central Server URL",
    "options": "URL",
-   "reqd": 1
+   "reqd": 0,
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Account Status",
+   "options": "Active\nInactive\nSuspended",
+   "default": "Active",
+   "read_only": 1
   },
   {
    "fieldname": "connection_status",

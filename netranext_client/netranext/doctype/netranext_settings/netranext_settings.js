@@ -3,14 +3,25 @@
 
 frappe.ui.form.on('NetraNext Settings', {
     refresh: function(frm) {
+        // If token exists, load the decrypted value into the DOM input element to enable the show/hide eye toggle
+        if (frm.doc.api_key) {
+            frappe.call({
+                method: 'netranext_client.netranext.doctype.netranext_settings.netranext_settings.reveal_api_key',
+                callback: function(r) {
+                    if (r.message && frm.fields_dict.api_key && frm.fields_dict.api_key.$input) {
+                        frm.fields_dict.api_key.$input.val(r.message);
+                    }
+                }
+            });
+        }
+
         // If no token is entered, show a helpful message
         if (!frm.doc.api_key) {
             frm.dashboard.set_headline(__('Please enter your Integration Token (Setup Token) provided via email to activate this client bench.'));
         } else {
             frm.add_custom_button(__('Reveal Token'), function() {
                 frappe.call({
-                    method: 'reveal_api_key',
-                    doc: frm.doc,
+                    method: 'netranext_client.netranext.doctype.netranext_settings.netranext_settings.reveal_api_key',
                     callback: function(r) {
                         if (r.message) {
                             let d = new frappe.ui.Dialog({
@@ -46,8 +57,7 @@ frappe.ui.form.on('NetraNext Settings', {
         // After saving, if token exists, automatically test connection
         if (frm.doc.api_key) {
             frappe.call({
-                doc: frm.doc,
-                method: "test_connection",
+                method: 'netranext_client.netranext.doctype.netranext_settings.netranext_settings.test_connection',
                 freeze: true,
                 freeze_message: __('Verifying connection with Central Orchestrator...'),
                 callback: function(r) {

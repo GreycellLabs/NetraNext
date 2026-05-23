@@ -1025,3 +1025,40 @@ def delete_journey(trip_id=None, journey_id=None):
     except Exception as e:
         frappe.db.rollback()
         return handle_api_exception(e, "JOURNEY_SYNC")
+
+
+@frappe.whitelist(allow_guest=True)
+def update_tenant_status(status):
+    """
+    Update tenant connection status in NetraNext Settings.
+    Called by central orchestrator when status changes.
+    """
+    try:
+        # Validate sync request
+        validate_sync_request()
+
+        # Check if status option is valid
+        valid_statuses = ["Active", "Inactive", "Suspended"]
+        if status not in valid_statuses:
+            return create_error_response(
+                message=f"Invalid status value. Must be one of {valid_statuses}",
+                status_code=400
+            )
+
+        # Get settings and update status using db_set to prevent hooks loop
+        settings = frappe.get_single("NetraNext Settings")
+        if settings.status != status:
+            settings.db_set("status", status)
+            frappe.db.commit()
+
+        tenant_bench_logger.info(f"Tenant status updated from orchestrator to: {status}", "STATUS_SYNC")
+
+        return create_success_response(
+            message="Tenant status updated successfully",
+            data={
+                "status": status
+            }
+        )
+
+    except Exception as e:
+        return handle_api_exception(e, "STATUS_SYNC")
