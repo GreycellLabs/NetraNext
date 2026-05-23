@@ -309,6 +309,39 @@ def store_face(face_data):
             {"employee": face_data["employee_id"]}
         )
 
+        # Download photo from orchestrator and save locally on client bench
+        local_photo_url = face_data.get("face_photo_url")
+        remote_photo_url = face_data.get("face_photo_url")
+        if remote_photo_url:
+            # If relative URL, make it absolute using central_server_url
+            if not remote_photo_url.startswith("http"):
+                central_url = frappe.db.get_single_value("NetraNext Settings", "central_server_url")
+                if central_url:
+                    central_url = central_url.rstrip("/")
+                    remote_photo_url = f"{central_url}/{remote_photo_url.lstrip('/')}"
+
+            if remote_photo_url.startswith("http"):
+                try:
+                    import requests
+                    from frappe.utils.file_manager import save_file
+                    import os
+
+                    response = requests.get(remote_photo_url, timeout=15)
+                    if response.status_code == 200:
+                        filename = os.path.basename(remote_photo_url.split("?")[0])
+                        file_doc = save_file(
+                            fname=filename,
+                            content=response.content,
+                            dt="NetraNext Face Registration",
+                            dn=face_data["face_id"],
+                            is_private=0
+                        )
+                        if file_doc:
+                            local_photo_url = file_doc.file_url
+                            tenant_bench_logger.info(f"Face photo saved locally: {local_photo_url}", "FACE_SYNC")
+                except Exception as photo_err:
+                    tenant_bench_logger.warning(f"Could not download face photo, using remote URL: {str(photo_err)}", "FACE_SYNC")
+
         if existing:
             # Update existing registration
             frappe.db.set_value(
@@ -317,7 +350,7 @@ def store_face(face_data):
                 {
                     "face_id": face_data["face_id"],
                     "face_embedding": json.dumps(face_data["embedding"]) if isinstance(face_data["embedding"], list) else face_data["embedding"],
-                    "face_photo": face_data.get("face_photo_url"),
+                    "face_photo": local_photo_url,
                     "registered_date": face_data.get("registered_date")
                 }
             )
@@ -330,7 +363,7 @@ def store_face(face_data):
                 "employee": face_data["employee_id"],
                 "face_id": face_data["face_id"],
                 "face_embedding": json.dumps(face_data["embedding"]) if isinstance(face_data["embedding"], list) else face_data["embedding"],
-                "face_photo": face_data.get("face_photo_url"),
+                "face_photo": local_photo_url,
                 "registered_date": face_data.get("registered_date")
             })
             face_doc.insert(ignore_permissions=True)
