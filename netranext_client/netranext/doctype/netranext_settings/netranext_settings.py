@@ -12,6 +12,8 @@ from datetime import datetime
 class NetraNextSettings(Document):
     def validate(self):
         """Validate settings before saving"""
+        if not self.central_server_url:
+            self.central_server_url = "https://netranext.m.frappe.cloud"
         self.validate_connection_details()
         self.prevent_central_server_url_change()
 
@@ -31,6 +33,8 @@ class NetraNextSettings(Document):
     def test_connection(self):
         """Test connection to central NetraNext server"""
         try:
+            if not self.central_server_url:
+                self.central_server_url = "https://netranext.m.frappe.cloud"
             url = f"{self.central_server_url.rstrip('/')}/api/method/netranext.apis.v1.tenant_onboarding.activate_tenant_from_client"
             headers = {
                 "X-NetraNext-Token": self.get_password("api_key")

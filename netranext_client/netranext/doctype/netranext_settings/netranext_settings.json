@@ -33,7 +33,7 @@
    "fieldname": "tenant_id",
    "fieldtype": "Data",
    "label": "Tenant ID",
-   "read_only": 1
+   "read_only": 0
   },
   {
    "fieldname": "column_break_top",
@@ -68,7 +68,7 @@
    "label": "Central Server URL",
    "options": "URL",
    "reqd": 0,
-   "read_only": 1
+   "read_only": 0
   },
   {
    "fieldname": "status",
