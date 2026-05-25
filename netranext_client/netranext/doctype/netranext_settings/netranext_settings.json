@@ -62,6 +62,7 @@
    "fieldtype": "Column Break"
   },
   {
+   "default": "https://netranext.m.frappe.cloud",
    "fieldname": "central_server_url",
    "fieldtype": "Data",
    "label": "Central Server URL",
