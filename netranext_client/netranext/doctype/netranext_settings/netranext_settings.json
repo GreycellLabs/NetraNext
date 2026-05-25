@@ -75,14 +75,14 @@
    "fieldtype": "Select",
    "label": "Account Status",
    "options": "Active\nInactive\nSuspended",
-   "default": "Active",
+   "default": "Inactive",
    "read_only": 1
   },
   {
    "fieldname": "connection_status",
    "fieldtype": "Select",
    "label": "Connection Status",
-   "options": "Connected\nDisconnected\nError",
+   "options": "\nConnected\nDisconnected\nError",
    "read_only": 1
   },
   {
