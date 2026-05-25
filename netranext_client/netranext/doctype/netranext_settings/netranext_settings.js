@@ -3,6 +3,10 @@
 
 frappe.ui.form.on('NetraNext Settings', {
     refresh: function(frm) {
+        // Toggle field editable status so fields are visible even when empty, but locked once saved
+        frm.toggle_enable('central_server_url', !frm.doc.central_server_url);
+        frm.toggle_enable('tenant_id', !frm.doc.tenant_id);
+
         // If token exists, load the decrypted value into the DOM input element to enable the show/hide eye toggle
         if (frm.doc.api_key) {
             frappe.call({
