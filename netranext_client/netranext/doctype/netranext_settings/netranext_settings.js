@@ -3,9 +3,10 @@
 
 frappe.ui.form.on('NetraNext Settings', {
     refresh: function(frm) {
-        // Toggle field editable status so fields are visible even when empty, but locked once saved
-        frm.toggle_enable('central_server_url', !frm.doc.central_server_url);
-        frm.toggle_enable('tenant_id', !frm.doc.tenant_id);
+        // Prefill the central server URL if it is empty, so it is always populated and visible
+        if (!frm.doc.central_server_url) {
+            frm.set_value('central_server_url', 'https://netranext.m.frappe.cloud');
+        }
 
         // If token exists, load the decrypted value into the DOM input element to enable the show/hide eye toggle
         if (frm.doc.api_key) {
