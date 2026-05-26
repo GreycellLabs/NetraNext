@@ -287,7 +287,43 @@ api_whitelisted_methods = [
 # Custom Fields
 # -------------------------------
 custom_fields = {
-    "Employee Checkin": "netranext_client.netranext.custom.employee_checkin_custom_fields"
+    "Employee Checkin": [
+        {
+            "fieldname": "log_type_col",
+            "fieldtype": "Column Break",
+            "insert_after": "log_type"
+        },
+        {
+            "fieldname": "attendance_proof_section",
+            "fieldtype": "Section Break",
+            "label": "Attendance Proof",
+            "insert_after": "skip_auto_attendance"
+        },
+        {
+            "fieldname": "photo_proof",
+            "fieldtype": "Attach Image",
+            "label": "Photo Proof",
+            "insert_after": "attendance_proof_section",
+            "hidden": 0,
+            "reqd": 0,
+            "read_only": 1,
+            "description": "Actual photo captured during attendance"
+        },
+        {
+            "fieldname": "attendance_proof_col",
+            "fieldtype": "Column Break",
+            "insert_after": "photo_proof"
+        },
+        {
+            "fieldname": "location_address",
+            "fieldtype": "Text",
+            "label": "Location Address",
+            "insert_after": "attendance_proof_col",
+            "hidden": 0,
+            "reqd": 0,
+            "read_only": 1
+        }
+    ]
 }
 
 # CORS Configuration for Central Server Access

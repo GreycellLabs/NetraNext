@@ -716,7 +716,7 @@ def get_employee_checkins(employee_id=None, from_date=None, to_date=None, limit=
             fields=[
                 "name", "employee", "log_type", "time",
                 "device_id", "latitude", "longitude",
-                "location_address", "marked_by", "creation", "modified"
+                "location_address", "photo_proof", "creation", "modified"
             ],
             order_by="time asc",
             limit=int(limit),
