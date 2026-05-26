@@ -1062,3 +1062,69 @@ def update_tenant_status(status):
 
     except Exception as e:
         return handle_api_exception(e, "STATUS_SYNC")
+
+
+@frappe.whitelist(allow_guest=True)
+def store_face_registration_request():
+    """
+    Store a pending face registration/update request on the client bench.
+    Called by central orchestrator when a user submits a face registration/update.
+    """
+    try:
+        # Validate sync request
+        validate_sync_request()
+
+        data = frappe.request.get_json() or {}
+
+        # Validate required fields
+        required = ["employee_id", "face_id", "face_photo_url", "embedding"]
+        for field in required:
+            if not data.get(field):
+                return create_error_response(
+                    message=f"Missing required parameter: {field}",
+                    status_code=400
+                )
+
+        # Check for existing pending request
+        existing = frappe.db.exists(
+            "NetraNext Face Registration Request",
+            {"employee": data.get("employee_id"), "status": "Pending"}
+        )
+        if existing:
+            return create_error_response(
+                message=f"There is already a pending face registration request for this employee.",
+                status_code=400
+            )
+
+        # Create request document
+        req = frappe.get_doc({
+            "doctype": "NetraNext Face Registration Request",
+            "employee": data.get("employee_id"),
+            "face_id": data.get("face_id"),
+            "request_type": data.get("request_type", "Register"),
+            "status": "Pending",
+            "face_photo": data.get("face_photo_url"),
+            "face_embedding": data.get("embedding"),
+            "requested_date": data.get("requested_date") or frappe.utils.now_datetime()
+        })
+
+        req.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        tenant_bench_logger.info(
+            f"Created pending face registration request {req.name} for employee: {req.employee}",
+            "FACE_REGISTRATION_REQUEST_SYNC"
+        )
+
+        return create_success_response(
+            message="Face registration request stored successfully",
+            data={
+                "request_name": req.name,
+                "status": "Pending"
+            }
+        )
+
+    except Exception as e:
+        frappe.db.rollback()
+        return handle_api_exception(e, "FACE_REGISTRATION_REQUEST_SYNC")
+
