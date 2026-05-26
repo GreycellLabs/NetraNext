@@ -16,7 +16,6 @@
   "request_type",
   "requested_date",
   "face_data_section",
-  "face_photo_view",
   "face_photo",
   "face_embedding",
   "action_details_section",
@@ -90,17 +89,10 @@
    "label": "Face Data"
   },
   {
-   "fieldname": "face_photo_view",
-   "fieldtype": "Image",
-   "label": "Face Photo",
-   "options": "face_photo"
-  },
-  {
    "fieldname": "face_photo",
    "fieldtype": "Attach Image",
-   "label": "Face Photo Link",
-   "read_only": 1,
-   "hidden": 1
+   "label": "Face Photo",
+   "read_only": 1
   },
   {
    "fieldname": "face_embedding",
