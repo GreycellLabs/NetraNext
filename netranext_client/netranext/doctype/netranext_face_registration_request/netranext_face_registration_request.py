@@ -72,6 +72,45 @@ class NetraNextFaceRegistrationRequest(Document):
 			reg.registered_date = frappe.utils.now_datetime()
 			reg.save(ignore_permissions=True)
 
+	def on_trash(self):
+		"""When client bench record is deleted, also delete orchestrator's copy"""
+		orchestrator_name = self.orchestrator_request_name or self.name
+		if not orchestrator_name:
+			return
+
+		try:
+			settings = frappe.get_single("NetraNext Settings")
+			if not settings.central_server_url or not settings.api_key:
+				return
+
+			try:
+				api_token = settings.get_password("api_key")
+			except Exception:
+				api_token = settings.api_key
+
+			url = f"{settings.central_server_url.rstrip('/')}/api/method/netranext.apis.v1.face_registration_v2.delete_face_registration_request_v2"
+
+			headers = {
+				"X-Tenant-ID": settings.tenant_id,
+				"X-NetraNext-Token": api_token,
+				"Content-Type": "application/json"
+			}
+
+			payload = {
+				"employee_id": self.employee,
+				"request_name": orchestrator_name
+			}
+
+			response = requests.post(url, json=payload, headers=headers, timeout=10)
+			if response.status_code == 200:
+				frappe.logger().info(f"Orchestrator request {orchestrator_name} deleted successfully")
+			else:
+				frappe.logger().warning(f"Failed to delete orchestrator request {orchestrator_name}: HTTP {response.status_code}")
+
+		except Exception as e:
+			# Non-fatal: log but don't block deletion on client bench
+			frappe.logger().error(f"Error deleting orchestrator request on trash: {str(e)}")
+
 	def sync_action_to_orchestrator(self, action):
 		"""Call orchestrator to mirror approval/rejection"""
 		settings = frappe.get_single("NetraNext Settings")
@@ -95,7 +134,7 @@ class NetraNextFaceRegistrationRequest(Document):
 
 		payload = {
 			"employee_id": self.employee,
-			"request_name": self.name,
+			"request_name": self.orchestrator_request_name or self.name,  # send orchestrator's name for doc lookup
 			"face_id": self.face_id,
 			"request_type": self.request_type,
 			"actioned_by": frappe.session.user

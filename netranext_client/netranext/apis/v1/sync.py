@@ -1105,6 +1105,7 @@ def store_face_registration_request():
             "status": "Pending",
             "face_photo": data.get("face_photo_url"),
             "face_embedding": data.get("embedding"),
+            "orchestrator_request_name": data.get("orchestrator_request_name", ""),
             "requested_date": data.get("requested_date") or frappe.utils.now_datetime()
         })
 
