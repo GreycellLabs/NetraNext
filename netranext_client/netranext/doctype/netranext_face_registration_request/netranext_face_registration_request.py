@@ -78,12 +78,18 @@ class NetraNextFaceRegistrationRequest(Document):
 		if not settings.central_server_url or not settings.api_key:
 			frappe.throw("Central Server URL or API Key is missing in NetraNext Settings.")
 
+		# Use get_password to retrieve the plaintext key (it's stored as Password fieldtype)
+		try:
+			api_token = settings.get_password("api_key")
+		except Exception:
+			api_token = settings.api_key
+
 		endpoint = "approve_face_registration_request_v2" if action == "approve" else "reject_face_registration_request_v2"
 		url = f"{settings.central_server_url.rstrip('/')}/api/method/netranext.apis.v1.face_registration_v2.{endpoint}"
 
 		headers = {
 			"X-Tenant-ID": settings.tenant_id,
-			"X-NetraNext-Token": settings.api_key,
+			"X-NetraNext-Token": api_token,
 			"Content-Type": "application/json"
 		}
 
