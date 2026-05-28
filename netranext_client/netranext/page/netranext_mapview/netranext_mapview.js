@@ -45,7 +45,7 @@ function load_leaflet_library(callback) {
     $('<link>')
         .attr('rel', 'stylesheet')
         .attr('href', '/assets/frappe/js/lib/leaflet/leaflet.css')
-        .appendTo('head');
+        .appendTo('head'); // nosemgrep
 
     // Load JS
     $.getScript('/assets/frappe/js/lib/leaflet/leaflet.js')

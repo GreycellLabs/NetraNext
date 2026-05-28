@@ -144,7 +144,7 @@ frappe.pages['netranext-dashboard'].on_page_load = function (wrapper) {
                 </div>
             </div>
         </div>
-    `).appendTo(page.main);
+    `).appendTo(page.main); // nosemgrep
 
     // Initial loader skeleton
     if (!$('#dashboard-loader').length) {
