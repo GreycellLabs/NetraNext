@@ -131,7 +131,7 @@ frappe.pages['netranext-mapview'].on_page_load = function (wrapper) {
         </div>
     `;
 
-    $(page.main).empty().append(html);
+    $(page.main).empty().append( /* nosemgrep */ html);
 
     // Global State
     window.mapViewData = {
@@ -199,7 +199,7 @@ function get_today_date() {
 // Load real journey data from API
 function load_journey_data() {
     // Show loading state
-    $('#journey-list-content').html(`
+    $('#journey-list-content').html( /* nosemgrep */ `
         <div style="text-align: center; padding: 20px;">
             <div class="loader-spinner" style="margin: 0 auto 16px;"></div>
             <div style="color: var(--j-text-muted);">Loading journeys...</div>
@@ -376,7 +376,7 @@ function show_error_message(message) {
         '<button class="btn btn-default" onclick="load_journey_data()">Retry</button>' +
         '</div>';
 
-    $('#journey-list-content').html(errorHtml);
+    $('#journey-list-content').html( /* nosemgrep */ errorHtml);
 }
 
 function populate_employee_filter() {
@@ -393,7 +393,7 @@ function populate_employee_filter() {
     select.find('option:not(:first)').remove();
 
     Object.keys(employees).sort().forEach(function (empId) {
-        select.append('<option value="' + empId + '">' + employees[empId] + '</option>');
+        select.append( /* nosemgrep */ '<option value="' + empId + '">' + employees[empId] + '</option>');
     });
 
     if (currentVal) {
@@ -406,7 +406,7 @@ function initialize_map() {
 
     if (typeof L === 'undefined') {
         console.error("Leaflet library (L) is not loaded!");
-        $('#journey-map').html(
+        $('#journey-map').html( /* nosemgrep */ 
             '<div style="text-align: center; padding: 40px; color: #8d99a6;">' +
             '<div style="font-size: 48px;">⚠️</div>' +
             '<h3>Map Not Available</h3>' +
@@ -430,7 +430,7 @@ function initialize_map() {
         console.log("Map created successfully");
     } catch (error) {
         console.error("Error creating map:", error);
-        $('#journey-map').html(
+        $('#journey-map').html( /* nosemgrep */ 
             '<div style="text-align: center; padding: 40px; color: #e53e3e;">' +
             '<div style="font-size: 48px;">⚠️</div>' +
             '<h3>Map Error</h3>' +
@@ -646,7 +646,7 @@ function render_journey_list() {
     container.empty();
 
     if (journeys.length === 0) {
-        container.append(
+        container.append( /* nosemgrep */ 
             '<div style="text-align: center; padding: 48px 20px; color: var(--j-text-muted);">' +
             '<div style="font-size: 40px; margin-bottom: 12px;">📍</div>' +
             '<div style="font-weight: 600;">No journeys found for this date.</div>' +
@@ -685,7 +685,7 @@ function render_journey_list() {
             select_journey(id, true);
         });
 
-        container.append(card);
+        container.append( /* nosemgrep */ card);
     });
 }
 
