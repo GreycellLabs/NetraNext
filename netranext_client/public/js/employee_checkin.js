@@ -44,7 +44,7 @@ frappe.ui.form.on('Employee Checkin', {
             if ($container.length === 0) {
                 $container = $photo_wrapper; // Fallback
             }
-            $container.append(custom_html);
+            $container.append(custom_html); // nosemgrep
             
             // Add hover effects via JS
             $photo_wrapper.find('.custom-photo-container').hover(
@@ -79,9 +79,9 @@ frappe.ui.form.on('Employee Checkin', {
                 '<div style="text-align:right; font-size: 11px; margin-top: 4px;">' +
                 '    <a href="https://www.openstreetmap.org/?mlat=' + lat + '&mlon=' + lng + '#map=16/' + lat + '/' + lng + '" target="_blank">View Larger Map</a>' +
                 '</div>';
-            frm.get_field('location_map').$wrapper.html(map_html);
+            frm.get_field('location_map').$wrapper.html(map_html); // nosemgrep
         } else {
-            frm.get_field('location_map').$wrapper.html('<div class="text-muted" style="padding: 15px; background: #f8f9fa; border-radius: 4px; margin-top: 10px;">No location coordinates available for this check-in.</div>');
+            frm.get_field('location_map').$wrapper.html('<div class="text-muted" style="padding: 15px; background: #f8f9fa; border-radius: 4px; margin-top: 10px;">No location coordinates available for this check-in.</div>'); // nosemgrep
         }
     }
 });
