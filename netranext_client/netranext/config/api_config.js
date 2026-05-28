@@ -5,7 +5,9 @@
 
 window.NetraNextConfig = {
     // Central Server API Configuration
-    apiBaseUrl: 'https://netranext.m.frappe.cloud',
+    // apiBaseUrl: 'https://netranext.m.frappe.cloud',
+        apiBaseUrl: 'http://netranext-service.local:8000',
+
     apiVersion: 'v1',
 
     // API Endpoints
