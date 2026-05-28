@@ -71,9 +71,10 @@ frappe.ui.form.on('Employee Checkin', {
             let lng = frm.doc.longitude;
             let bbox = `${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}`;
             let map_html = `
-                <div style="border: 1px solid #d1d8dd; border-radius: 4px; overflow: hidden; margin-top: 10px;">
-                    <iframe width="100%" height="250" frameborder="0" scrolling="no" marginheight="0" marginwidth="0" 
-                    src="https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&amp;layer=mapnik&amp;marker=${lat}%2C${lng}">
+                <div style="border: 1px solid #d1d8dd; border-radius: 4px; overflow: hidden; margin-top: 10px; height: 250px; position: relative;">
+                    <iframe width="100%" height="295" frameborder="0" scrolling="no" marginheight="0" marginwidth="0" 
+                    src="https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&amp;layer=mapnik&amp;marker=${lat}%2C${lng}"
+                    style="position: absolute; top: 0; left: 0; border: none;">
                     </iframe>
                 </div>
                 <div style="text-align:right; font-size: 11px; margin-top: 4px;">
