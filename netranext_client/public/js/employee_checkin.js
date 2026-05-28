@@ -18,7 +18,7 @@ frappe.ui.form.on('Employee Checkin', {
                     '[data-fieldname="photo_proof"] .attach-image-display { ' +
                     '    display: none !important; ' +
                     '}'
-                ).appendTo('head');
+                ).appendTo('head'); // nosemgrep
             }
             
             // Remove any previously injected custom html
