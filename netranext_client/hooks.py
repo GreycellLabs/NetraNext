@@ -49,7 +49,7 @@ page_css = {
 }
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {"Employee Checkin" : "public/js/employee_checkin.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -310,9 +310,18 @@ custom_fields = {
             "description": "Actual photo captured during attendance"
         },
         {
+            "fieldname": "photo_preview",
+            "fieldtype": "Image",
+            "label": "Photo Preview",
+            "insert_after": "photo_proof",
+            "options": "photo_proof",
+            "hidden": 0,
+            "read_only": 1
+        },
+        {
             "fieldname": "attendance_proof_col",
             "fieldtype": "Column Break",
-            "insert_after": "photo_proof"
+            "insert_after": "photo_preview"
         },
         {
             "fieldname": "location_address",
@@ -322,6 +331,12 @@ custom_fields = {
             "hidden": 0,
             "reqd": 0,
             "read_only": 1
+        },
+        {
+            "fieldname": "location_map",
+            "fieldtype": "HTML",
+            "label": "Location Map",
+            "insert_after": "location_address"
         }
     ]
 }

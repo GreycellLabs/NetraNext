@@ -4,8 +4,8 @@
 frappe.ui.form.on('NetraNext Settings', {
     refresh: function(frm) {
         // Prefill the central server URL if it is empty, so it is always populated and visible
-        if (!frm.doc.central_server_url) {
-            frm.set_value('central_server_url', 'https://netranext.m.frappe.cloud');
+        if (!frm.doc.central_server_url && window.NetraNextConfig) {
+            frm.set_value('central_server_url', window.NetraNextConfig.apiBaseUrl);
         }
 
         // If token exists, load the decrypted value into the DOM input element to enable the show/hide eye toggle

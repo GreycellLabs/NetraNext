@@ -25,9 +25,19 @@
 			"dt": "Employee Checkin"
 		},
 		{
+			"fieldname": "photo_preview",
+			"fieldtype": "Image",
+			"label": "Photo Preview",
+			"insert_after": "photo_proof",
+			"options": "photo_proof",
+			"hidden": 0,
+			"read_only": 1,
+			"dt": "Employee Checkin"
+		},
+		{
 			"fieldname": "attendance_proof_col",
 			"fieldtype": "Column Break",
-			"insert_after": "photo_proof",
+			"insert_after": "photo_preview",
 			"dt": "Employee Checkin"
 		},
 		{
@@ -38,6 +48,13 @@
 			"hidden": 0,
 			"reqd": 0,
 			"read_only": 1,
+			"dt": "Employee Checkin"
+		},
+		{
+			"fieldname": "location_map",
+			"fieldtype": "HTML",
+			"label": "Location Map",
+			"insert_after": "location_address",
 			"dt": "Employee Checkin"
 		}
 	],
