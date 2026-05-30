@@ -1129,3 +1129,46 @@ def store_face_registration_request():
         frappe.db.rollback()
         return handle_api_exception(e, "FACE_REGISTRATION_REQUEST_SYNC")
 
+
+@frappe.whitelist(allow_guest=True)
+def get_all_employees():
+    """
+    Get all active employees from the tenant bench
+    Called by central server to sync contacts directory
+    """
+    try:
+        # Validate sync request
+        validate_sync_request()
+
+        # Get all active employees
+        employees = frappe.get_all(
+            "Employee",
+            filters={"status": "Active"},
+            fields=[
+                "name",
+                "first_name",
+                "last_name",
+                "employee_name",
+                "cell_number",
+                "personal_email",
+                "company_email",
+                "designation",
+                "department",
+                "branch",
+                "image",
+                "modified",
+                "status"
+            ]
+        )
+
+        tenant_bench_logger.info(f"Retrieved {len(employees)} active employees", "EMPLOYEE_SYNC")
+
+        return create_success_response(
+            message="Active employees retrieved successfully",
+            data=employees
+        )
+
+    except Exception as e:
+        return handle_api_exception(e, "EMPLOYEE_SYNC")
+
+

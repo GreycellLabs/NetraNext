@@ -276,6 +276,7 @@ pages_dict = {
 api_whitelisted_methods = [
     "netranext_client.netranext.apis.v1.sync.get_employee_data",
     "netranext_client.netranext.apis.v1.sync.get_employee_faces",
+    "netranext_client.netranext.apis.v1.sync.get_all_employees",
     "netranext_client.netranext.apis.v1.sync.store_attendance",
     "netranext_client.netranext.apis.v1.sync.store_face",
     "netranext_client.netranext.apis.v1.sync.store_journey",
