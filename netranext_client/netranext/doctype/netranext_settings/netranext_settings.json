@@ -9,9 +9,11 @@
  "field_order": [
   "tenant_name",
   "tenant_id",
+  "expense_rate",
   "column_break_top",
   "central_server_url",
   "status",
+  "expense_approver",
   "api_credentials_section",
   "api_key",
   "api_secret",
@@ -34,6 +36,20 @@
    "fieldtype": "Data",
    "label": "Tenant ID",
    "read_only": 1
+  },
+  {
+   "fieldname": "expense_rate",
+   "fieldtype": "Currency",
+   "label": "Expense Rate per KM",
+   "reqd": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "expense_approver",
+   "fieldtype": "Link",
+   "label": "Expense Approver",
+   "reqd": 1,
+   "options": "User"
   },
   {
    "fieldname": "column_break_top",
