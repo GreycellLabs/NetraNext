@@ -9,11 +9,13 @@
  "field_order": [
   "tenant_name",
   "tenant_id",
+  "expense_claim_type",
   "expense_rate",
   "column_break_top",
   "central_server_url",
   "status",
   "expense_approver",
+  "payable_account",
   "api_credentials_section",
   "api_key",
   "api_secret",
@@ -38,6 +40,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "expense_claim_type",
+   "fieldtype": "Link",
+   "label": "Expense Claim Type",
+   "reqd": 1,
+   "options": "Expense Claim Type"
+  },
+  {
    "fieldname": "expense_rate",
    "fieldtype": "Currency",
    "label": "Expense Rate per KM",
@@ -50,6 +59,14 @@
    "label": "Expense Approver",
    "reqd": 1,
    "options": "User"
+  },
+  {
+   "fieldname": "payable_account",
+   "fieldtype": "Link",
+   "label": "Payable Account",
+   "reqd": 1,
+   "options": "Account",
+   "description": "Default account to use when submitting expense claims"
   },
   {
    "fieldname": "column_break_top",

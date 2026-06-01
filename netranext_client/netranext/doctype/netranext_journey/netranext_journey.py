@@ -63,9 +63,10 @@ class NetraNextJourney(Document):
 		"""Create an Expense Claim using the inbuilt module"""
 		settings = frappe.get_single("NetraNext Settings")
 		expense_rate = settings.expense_rate or 0.0
+		expense_type = settings.expense_claim_type
 
-		if not expense_rate or not self.distance_km:
-			frappe.msgprint("Expense Claim not created: Distance is 0 or Expense Rate is not configured in NetraNext Settings.")
+		if not expense_rate or not self.distance_km or not expense_type:
+			frappe.msgprint("Expense Claim not created: Distance is 0, Expense Rate is not configured, or Expense Claim Type is missing in NetraNext Settings.")
 			return
 
 		expense_amount = self.distance_km * expense_rate
@@ -81,8 +82,11 @@ class NetraNextJourney(Document):
 			if settings.expense_approver:
 				expense_claim.expense_approver = settings.expense_approver
 			
+			if settings.payable_account:
+				expense_claim.payable_account = settings.payable_account
+			
 			expense_claim.append("expenses", {
-				"expense_type": "Travel",
+				"expense_type": expense_type,
 				"amount": expense_amount,
 				"description": f"Automated expense for Journey: {self.journey_name} ({self.distance_km} km at rate {expense_rate})"
 			})
