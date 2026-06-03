@@ -472,16 +472,44 @@ def store_journey(journey_data):
             "metadata": journey_data.get("metadata"),
             "raw_gps_data": journey_data.get("raw_gps_data"),
             "raw_coordinates": journey_data.get("raw_gps_data"),
+            "scheduled_start_time": journey_data.get("scheduled_start_time"),
+            "scheduled_end_time": journey_data.get("scheduled_end_time"),
+            "destination_address": journey_data.get("destination_address"),
         }
 
         for field, value in optional_mappings.items():
             if field in field_names and value is not None:
                 doc_data[field] = value
 
+        trip_id = journey_data.get("trip_id")
+        
+        # Always create a new Journey for the tracked route
         journey_doc = frappe.get_doc(doc_data)
         journey_doc.insert(ignore_permissions=True)
+        action = "stored"
+        
+        tenant_bench_logger.info(f"Checking Scheduled Trip. Received trip_id: {trip_id}", "JOURNEY_SYNC")
+        
+        # If this journey is fulfilling a Scheduled Trip, update its status
+        if trip_id and frappe.db.exists("Scheduled Trip", trip_id):
+            scheduled_trip = frappe.get_doc("Scheduled Trip", trip_id)
+            tenant_bench_logger.info(f"Found Scheduled Trip {trip_id} with current status {scheduled_trip.status}. Setting to {doc_data.get('status')}", "JOURNEY_SYNC")
+            
+            if doc_data.get("status") == "Completed":
+                scheduled_trip.status = "Completed"
+                scheduled_trip.journey_reference = journey_doc.name
+                scheduled_trip.save(ignore_permissions=True)
+                tenant_bench_logger.info(f"Scheduled Trip {trip_id} status updated to Completed", "JOURNEY_SYNC")
+            elif doc_data.get("status") == "In Progress":
+                scheduled_trip.status = "In Progress"
+                scheduled_trip.journey_reference = journey_doc.name
+                scheduled_trip.save(ignore_permissions=True)
+                tenant_bench_logger.info(f"Scheduled Trip {trip_id} status updated to In Progress", "JOURNEY_SYNC")
+        else:
+            if trip_id:
+                tenant_bench_logger.error(f"Scheduled Trip {trip_id} does not exist!", "JOURNEY_SYNC")
 
-        tenant_bench_logger.info(f"Journey stored for employee {journey_data['employee_id']}: {journey_doc.name}", "JOURNEY_SYNC")
+        tenant_bench_logger.info(f"Journey {action} for employee {journey_data['employee_id']}: {journey_doc.name}", "JOURNEY_SYNC")
 
         return create_success_response(
             message="Journey stored successfully",
@@ -761,92 +789,59 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
     try:
         validate_sync_request()
 
-        # Check if NetraNext Journey DocType exists
-        if not frappe.db.exists("DocType", "NetraNext Journey"):
-            return create_success_response(
-                message="No journeys found",
-                data={"journeys": [], "total": 0}
-            )
-
-        filters = []
-        if employee_id:
-            filters.append(["employee", "=", employee_id])
-        if status:
-            filters.append(["status", "=", status])
-
-        # Find field names
-        journey_meta = frappe.get_meta("NetraNext Journey")
-        field_names = [f.fieldname for f in journey_meta.fields]
+        # Fetch Scheduled Trips from ToDo for today
+        scheduled_trips = []
+        if frappe.db.exists("DocType", "Scheduled Trip"):
+            todo_user_id = user_id
+            if not todo_user_id and employee_id:
+                todo_user_id = frappe.db.get_value("Employee", employee_id, "user_id")
+            
+            if todo_user_id:
+                todo_filters = {
+                    "reference_type": "Scheduled Trip",
+                    "allocated_to": todo_user_id,
+                    "date": frappe.utils.today(),
+                    "status": "Open"
+                }
+                
+                todos = frappe.get_all(
+                    "ToDo",
+                    filters=todo_filters,
+                    fields=["reference_name"],
+                    ignore_permissions=True
+                )
+                
+                trip_names = [t.reference_name for t in todos if t.reference_name]
+                
+                if trip_names:
+                    scheduled_filters = [["name", "in", trip_names]]
+                    if status:
+                        scheduled_filters.append(["status", "=", status])
+                        
+                    scheduled_trips = frappe.get_all(
+                        "Scheduled Trip",
+                        filters=scheduled_filters,
+                        fields=["name", "employee", "status", "scheduled_start_time", "scheduled_end_time", "destination_address", "creation"],
+                        order_by="scheduled_start_time asc",
+                        ignore_permissions=True
+                    )
         
-        # Build fields to query
-        query_fields = [
-            "name", "employee", "status", "start_time", "end_time", 
-            "start_location", "end_location", "creation"
-        ]
-        
-        # Add optional fields if they exist
-        for f in ["journey_name", "distance_km", "flutter_journey_id", "user_id", 
-                 "original_points_count", "simplified_points_count", 
-                 "encoded_polyline", "metadata", "duration_seconds"]:
-            if f in field_names:
-                query_fields.append(f)
-
-        trips = frappe.get_all(
-            "NetraNext Journey",
-            filters=filters,
-            fields=query_fields,
-            order_by="creation desc",
-            limit=int(limit),
-            ignore_permissions=True
-        )
-        
-        import json
-
-        # Filter by user_id if provided (search in metadata or user_id field)
-        if user_id and trips:
-            filtered_trips = []
-            for trip in trips:
-                if trip.get("user_id") == user_id:
-                    filtered_trips.append(trip)
-                    continue
-
-                if trip.get("metadata"):
-                    try:
-                        metadata = json.loads(trip.metadata) if isinstance(trip.metadata, str) else trip.metadata
-                        if metadata.get("user_id") == user_id or metadata.get("flutter_data", {}).get("userId") == user_id:
-                            filtered_trips.append(trip)
-                    except:
-                        pass
-            trips = filtered_trips
-
         # Convert to Flutter format
         journeys = []
-        for trip in trips:
-            metadata = {}
-            if trip.get("metadata"):
-                try:
-                    metadata = json.loads(trip.metadata) if isinstance(trip.metadata, str) else trip.metadata
-                except:
-                    pass
-
-            journey = {
-                "id": trip.get("flutter_journey_id") or metadata.get("journey_id") or trip.name,
-                "userId": trip.get("user_id") or metadata.get("user_id") or trip.employee,
-                "startDate": str(trip.start_time) if trip.get("start_time") else None,
-                "endDate": str(trip.end_time) if trip.get("end_time") else None,
-                "isActive": trip.status == "In Progress",
-                "startAddress": trip.get("start_location") or metadata.get("start_address", ""),
-                "endAddress": trip.get("end_location") or metadata.get("end_address", ""),
-                "distanceKm": trip.get("distance_km") or 0.0,
-                "durationSeconds": trip.get("duration_seconds") or 0,
-                "pointsCount": trip.get("original_points_count") or 0,
-                "simplifiedPoints": trip.get("simplified_points_count") or 0,
-                "encodedPolyline": trip.get("encoded_polyline") or "",
-                "tripId": trip.name,
-                "status": trip.status,
-                "createdAt": str(trip.creation)
-            }
-            journeys.append(journey)
+        
+        # Add scheduled trips
+        for s_trip in scheduled_trips:
+            journeys.append({
+                "id": s_trip.name,
+                "tripId": s_trip.name,
+                "userId": user_id,
+                "status": s_trip.status,
+                "scheduledStartTime": str(s_trip.scheduled_start_time) if s_trip.scheduled_start_time else None,
+                "scheduledEndTime": str(s_trip.scheduled_end_time) if s_trip.scheduled_end_time else None,
+                "destinationAddress": s_trip.destination_address,
+                "isActive": False,
+                "points": [],
+            })
 
         tenant_bench_logger.info(f"Returned {len(journeys)} journeys", "JOURNEY_SYNC")
 

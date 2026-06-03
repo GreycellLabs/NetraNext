@@ -421,6 +421,10 @@ function render_dashboard(data) {
             <span class="shortcut-label">All Journeys</span>
             <span class="shortcut-arrow">↗</span>
         </div>
+        <div class="shortcut-item" onclick="show_schedule_trip_dialog()">
+            <span class="shortcut-label">Schedule Trip</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
     `;
 
     document.getElementById("onboard-flow-content").innerHTML /* nosemgrep */ = onboardHTML;
@@ -494,6 +498,9 @@ function render_journey_table(journeys) {
                 <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
                     <button onclick="frappe.set_route('List', 'NetraNext Journey')" style="padding: 10px 20px; background: #6366f1; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='#6366f1'">
                         <i class="fa fa-plus" style="margin-right: 6px;"></i>Create Journey
+                    </button>
+                    <button onclick="show_schedule_trip_dialog()" style="padding: 10px 20px; background: #a855f7; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#9333ea'" onmouseout="this.style.background='#a855f7'">
+                        <i class="fa fa-calendar" style="margin-right: 6px;"></i>Schedule Trip
                     </button>
                     <button onclick="frappe.set_route('netranext-mapview')" style="padding: 10px 20px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
                         <i class="fa fa-map" style="margin-right: 6px;"></i>View Map
@@ -653,6 +660,64 @@ function show_error_state(message) {
     `;
 
     // Set error state in journey and attendance sections
-    document.getElementById("journey-content").innerHTML /* nosemgrep */ = errorHtml;
-    document.getElementById("attendance-content").innerHTML /* nosemgrep */ = '<div style="padding: 20px; text-align: center; color: #cbd5e0;">Data loading failed</div>';
+    document.getElementById("journey-content").innerHTML = errorHtml;
+    document.getElementById("attendance-content").innerHTML = '<div style="padding: 20px; text-align: center; color: #cbd5e0;">Data loading failed</div>';
+}
+
+function show_schedule_trip_dialog() {
+    var dialog = new frappe.ui.Dialog({
+        title: 'Schedule Upcoming Trip',
+        fields: [
+            {
+                fieldname: 'employee',
+                label: 'Assign to Employee',
+                fieldtype: 'Link',
+                options: 'Employee',
+                reqd: 1
+            },
+            {
+                fieldname: 'destination_address',
+                label: 'Destination Address',
+                fieldtype: 'Link',
+                options: 'Address',
+                reqd: 1
+            },
+            {
+                fieldname: 'scheduled_start_time',
+                label: 'Start Date & Time',
+                fieldtype: 'Datetime',
+                reqd: 1
+            },
+            {
+                fieldname: 'scheduled_end_time',
+                label: 'End Date & Time',
+                fieldtype: 'Datetime',
+                reqd: 1
+            }
+        ],
+        primary_action_label: 'Schedule Trip',
+        primary_action(values) {
+            frappe.call({
+                method: "frappe.client.insert",
+                args: {
+                    doc: {
+                        doctype: "Scheduled Trip",
+                        employee: values.employee,
+                        status: "Scheduled",
+                        scheduled_start_time: values.scheduled_start_time,
+                        scheduled_end_time: values.scheduled_end_time,
+                        destination_address: values.destination_address
+                    }
+                },
+                callback: function(r) {
+                    if (!r.exc) {
+                        frappe.show_alert({message: __('Trip Scheduled Successfully'), indicator: 'green'});
+                        dialog.hide();
+                        refresh_dashboard_data();
+                    }
+                }
+            });
+        }
+    });
+    dialog.show();
 }

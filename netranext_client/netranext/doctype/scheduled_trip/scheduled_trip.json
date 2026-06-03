@@ -1,0 +1,119 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "format:SCHED-{#####}",
+ "creation": "2026-01-01 00:00:00",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "status",
+  "column_break_0",
+  "destination_address",
+  "section_break_0",
+  "scheduled_start_time",
+  "scheduled_end_time",
+  "column_break_1",
+  "journey_reference"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Scheduled\nIn Progress\nCompleted\nCancelled",
+   "default": "Scheduled",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_0",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "destination_address",
+   "fieldtype": "Link",
+   "label": "Destination Address",
+   "options": "Address",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_break_0",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "scheduled_start_time",
+   "fieldtype": "Datetime",
+   "label": "Scheduled Start Time",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "scheduled_end_time",
+   "fieldtype": "Datetime",
+   "label": "Scheduled End Time",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "journey_reference",
+   "fieldtype": "Link",
+   "label": "Linked Journey",
+   "options": "NetraNext Journey",
+   "read_only": 1
+  }
+ ],
+ "hide_toolbar": 0,
+ "icon": "icon-calendar",
+ "idx": 0,
+ "is_submittable": 0,
+ "modified": "2026-01-01 00:00:00",
+ "modified_by": "Administrator",
+ "module": "NetraNext",
+ "name": "Scheduled Trip",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Employee",
+   "share": 0,
+   "write": 0
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "controller": "netranext.doctype.scheduled_trip.scheduled_trip"
+}
