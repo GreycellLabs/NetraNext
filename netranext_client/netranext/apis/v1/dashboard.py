@@ -6,7 +6,7 @@ import frappe
 from datetime import datetime
 
 @frappe.whitelist(allow_guest=True)
-def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=10,
+def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100,
                      journey_page=1, journey_employee=None, attendance_page=1, attendance_employee=None):
     """
     Fetch dashboard data from local database
@@ -52,19 +52,19 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=10,
         try:
             if frappe.db.exists("DocType", "NetraNext Journey"):
                 # Use frappe.db.sql instead of get_all to avoid syntax issues
-                today_str = datetime.now().strftime('%Y-%m-%d')
-
                 journey_sql = """
                     SELECT name, employee, start_time as journey_date, start_time, end_time,
-                           start_location, end_location, distance_km as total_distance, status
+                           start_location, end_location, distance_km as total_distance, status,
+                           raw_gps_data
                     FROM `tabNetraNext Journey`
-                    WHERE DATE(start_time) <= %s
+                    WHERE DATE(start_time) >= %s AND DATE(start_time) <= %s
                     ORDER BY creation DESC
-                    LIMIT 5
+                    LIMIT %s
                 """
 
-                journey_records = frappe.db.sql(journey_sql, (today_str,), as_dict=True)
-
+                journey_records = frappe.db.sql(journey_sql, (date_from, date_to, int(limit)), as_dict=True)
+                
+                import json
                 for journey in journey_records:
                     # Get employee name
                     employee_name = journey.employee
@@ -73,6 +73,13 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=10,
                         employee_name = employee_doc.employee_name
                     except Exception:
                         pass
+
+                    raw_coords = []
+                    if journey.raw_gps_data:
+                        try:
+                            raw_coords = json.loads(journey.raw_gps_data)
+                        except Exception:
+                            pass
 
                     journeys.append({
                         "name": journey.name,
@@ -83,7 +90,8 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=10,
                         "start_location": journey.start_location or "Unknown",
                         "end_location": journey.end_location or "Unknown",
                         "distance_km": journey.total_distance or 0,
-                        "status": journey.status or "Completed"
+                        "status": journey.status or "Completed",
+                        "raw_coordinates": raw_coords
                     })
         except Exception as e:
             frappe.log_error(f"Journey fetch error: {e}")
