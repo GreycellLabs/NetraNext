@@ -142,7 +142,8 @@ frappe.pages['netranext-mapview'].on_page_load = function (wrapper) {
         selectedColor: '#10b981',   // Green
         map: null,
         layers: {},
-        markers: {}
+        markers: {},
+        addressCache: {}
     };
 
     window.currentFilters = {
@@ -540,6 +541,7 @@ function create_journey_popup(j, type) {
     var accentColor = type === 'start' ? '#10b981' : '#ef4444';
     var timeStr = type === 'start' ? j.start_time : j.end_time;
     var locationStr = type === 'start' ? (j.start_location || 'Start point') : (j.end_location || 'End point');
+    var displayLocation = format_location_display(locationStr);
 
     return '<div class="rich-popup">' +
         '<div class="popup-header" style="border-left: 4px solid ' + accentColor + ';">' +
@@ -561,10 +563,53 @@ function create_journey_popup(j, type) {
         '</div>' +
         '<div class="popup-info-row">' +
         '<span class="label">Location:</span>' +
-        '<span class="val">' + locationStr + '</span>' +
+        '<span class="val">' + displayLocation + '</span>' +
         '</div>' +
         '</div>' +
         '</div>';
+}
+
+function format_location_display(locationStr) {
+    if (!locationStr || locationStr === 'Start point' || locationStr === 'End point') return locationStr;
+    
+    var regex = /^-?\d+\.\d+,\s?-?\d+\.\d+$/;
+    if (!regex.test(locationStr)) {
+        return locationStr;
+    }
+    
+    var cacheKey = locationStr.replace(/\s+/g, '');
+    if (window.mapViewData.addressCache[cacheKey]) {
+        return window.mapViewData.addressCache[cacheKey];
+    }
+    
+    var classMarker = 'loc-' + cacheKey.replace(/[^a-zA-Z0-9]/g, '');
+    
+    if (window.mapViewData.addressCache[cacheKey] === undefined) {
+        window.mapViewData.addressCache[cacheKey] = null; 
+        var parts = locationStr.split(',');
+        var url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + parts[0].trim() + '&lon=' + parts[1].trim();
+        
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.display_name) {
+                    var parts = data.display_name.split(',');
+                    var shortAddr = parts.slice(0, Math.min(3, parts.length)).join(',').trim();
+                    window.mapViewData.addressCache[cacheKey] = shortAddr;
+                    $('.' + classMarker).text(shortAddr);
+                } else {
+                    window.mapViewData.addressCache[cacheKey] = locationStr;
+                    $('.' + classMarker).text(locationStr);
+                }
+            })
+            .catch(err => {
+                console.error('Geocoding error:', err);
+                window.mapViewData.addressCache[cacheKey] = locationStr;
+                $('.' + classMarker).text(locationStr);
+            });
+    }
+    
+    return '<span class="' + classMarker + '">Loading address...</span>';
 }
 
 function setup_event_handlers() {
@@ -659,6 +704,9 @@ function render_journey_list() {
     journeys.forEach(function(j) {
         var id = j.name || j.trip_id;
         var isSelected = window.mapViewData.selectedId === id;
+        
+        var startLoc = j.start_location || 'Start point';
+        var endLoc = j.end_location || 'End point';
 
         var card = $('<div class="journey-card' + (isSelected ? ' selected' : '') + '" data-id="' + id + '">' +
             '<div class="journey-card-header" style="align-items: center; margin-bottom: 8px;">' +
@@ -671,11 +719,11 @@ function render_journey_list() {
             '<div class="journey-card-body" style="gap: 4px;">' +
             '<div style="font-size: 11px; display: flex; align-items: center; gap: 6px;">' +
             '<span style="color: var(--j-success); font-size: 10px;">🟢</span>' +
-            '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (j.start_location || 'Start point') + '</span>' +
+            '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + format_location_display(startLoc) + '</span>' +
             '</div>' +
             '<div style="font-size: 11px; display: flex; align-items: center; gap: 6px;">' +
             '<span style="color: var(--j-danger); font-size: 10px;">🔴</span>' +
-            '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (j.end_location || 'End point') + '</span>' +
+            '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + format_location_display(endLoc) + '</span>' +
             '</div>' +
             '</div>' +
             '</div>'

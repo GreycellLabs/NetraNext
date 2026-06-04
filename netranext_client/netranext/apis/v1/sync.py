@@ -481,12 +481,27 @@ def store_journey(journey_data):
             if field in field_names and value is not None:
                 doc_data[field] = value
 
+        flutter_journey_id = journey_data.get("journey_id")
         trip_id = journey_data.get("trip_id")
         
-        # Always create a new Journey for the tracked route
-        journey_doc = frappe.get_doc(doc_data)
-        journey_doc.insert(ignore_permissions=True)
-        action = "stored"
+        # Check if journey already exists from the same Flutter session
+        existing_journey = None
+        if flutter_journey_id:
+            existing_journey = frappe.db.get_value("NetraNext Journey", {"flutter_journey_id": flutter_journey_id}, "name")
+            
+        if existing_journey:
+            # Update the existing journey (e.g., transition from In Progress -> Completed)
+            journey_doc = frappe.get_doc("NetraNext Journey", existing_journey)
+            for field, value in doc_data.items():
+                if field != "doctype" and value is not None:
+                    journey_doc.set(field, value)
+            journey_doc.save(ignore_permissions=True)
+            action = "updated"
+        else:
+            # Create a new Journey for the tracked route
+            journey_doc = frappe.get_doc(doc_data)
+            journey_doc.insert(ignore_permissions=True)
+            action = "stored"
         
         tenant_bench_logger.info(f"Checking Scheduled Trip. Received trip_id: {trip_id}", "JOURNEY_SYNC")
         
@@ -1167,3 +1182,35 @@ def get_all_employees():
         return handle_api_exception(e, "EMPLOYEE_SYNC")
 
 
+@frappe.whitelist(allow_guest=True)
+def update_scheduled_trip_status(trip_id=None, status=None):
+    """
+    Update Scheduled Trip status without creating a Journey record.
+    Used for lightweight "In Progress" updates.
+    """
+    try:
+        # Validate sync request
+        validate_sync_request()
+
+        if not trip_id or not status:
+            raise ValidationException("trip_id and status are required")
+
+        if not frappe.db.exists("Scheduled Trip", trip_id):
+            raise ResourceNotFoundException(f"Scheduled Trip {trip_id}")
+
+        scheduled_trip = frappe.get_doc("Scheduled Trip", trip_id)
+        scheduled_trip.status = status
+        scheduled_trip.save(ignore_permissions=True)
+        
+        tenant_bench_logger.info(f"Scheduled Trip {trip_id} status updated to {status} via lightweight API", "JOURNEY_SYNC")
+
+        return create_success_response(
+            message=f"Scheduled Trip status updated to {status}",
+            data={
+                "trip_id": trip_id,
+                "status": status
+            }
+        )
+
+    except Exception as e:
+        return handle_api_exception(e, "JOURNEY_SYNC")
