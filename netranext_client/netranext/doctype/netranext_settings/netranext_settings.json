@@ -12,9 +12,7 @@
   "expense_claim_type",
   "expense_rate",
   "column_break_top",
-  "central_server_url",
   "status",
-  "expense_approver",
   "payable_account",
   "api_credentials_section",
   "api_key",
@@ -44,7 +42,8 @@
    "fieldtype": "Link",
    "label": "Expense Claim Type",
    "reqd": 1,
-   "options": "Expense Claim Type"
+   "options": "Expense Claim Type",
+   "default": "Travel"
   },
   {
    "fieldname": "expense_rate",
@@ -52,13 +51,6 @@
    "label": "Expense Rate per KM",
    "reqd": 1,
    "default": "0"
-  },
-  {
-   "fieldname": "expense_approver",
-   "fieldtype": "Link",
-   "label": "Expense Approver",
-   "reqd": 1,
-   "options": "User"
   },
   {
    "fieldname": "payable_account",
@@ -93,14 +85,6 @@
   {
    "fieldname": "column_break_api",
    "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "central_server_url",
-   "fieldtype": "Data",
-   "label": "Central Server URL",
-   "options": "URL",
-   "reqd": 0,
-   "read_only": 1
   },
   {
    "fieldname": "status",
