@@ -15,6 +15,7 @@
   "status",
   "payable_account",
   "api_credentials_section",
+  "central_server_url",
   "api_key",
   "api_secret",
   "column_break_api",
@@ -68,6 +69,13 @@
    "fieldname": "api_credentials_section",
    "fieldtype": "Section Break",
    "label": "API Credentials"
+  },
+  {
+   "fieldname": "central_server_url",
+   "fieldtype": "Data",
+   "label": "Central Server URL",
+   "hidden": 1,
+   "reqd": 1
   },
   {
    "fieldname": "api_key",

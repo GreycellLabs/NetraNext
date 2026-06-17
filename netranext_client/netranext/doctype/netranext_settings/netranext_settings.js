@@ -8,6 +8,10 @@ frappe.ui.form.on('NetraNext Settings', {
             frm.set_value('central_server_url', window.NetraNextConfig.apiBaseUrl);
         }
 
+        if (!frm.doc.expense_claim_type) {
+            frm.set_value('expense_claim_type', 'Travel');
+        }
+
         // If token exists, load the decrypted value into the DOM input element to enable the show/hide eye toggle
         if (frm.doc.api_key) {
             frappe.call({
