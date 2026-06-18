@@ -1214,3 +1214,83 @@ def update_scheduled_trip_status(trip_id=None, status=None):
 
     except Exception as e:
         return handle_api_exception(e, "JOURNEY_SYNC")
+
+@frappe.whitelist(allow_guest=True)
+def extend_trip(trip_id=None, reason=None, new_destination=None):
+    """
+    Extend an active trip with a new destination and reason.
+    Logs the extension to the trip's timeline and metadata.
+    """
+    try:
+        # Validate sync request
+        validate_sync_request()
+
+        if not trip_id or not reason:
+            raise ValidationException("trip_id and reason are required")
+
+        # Determine DocType of the trip_id
+        doctype = None
+        if frappe.db.exists("Scheduled Trip", trip_id):
+            doctype = "Scheduled Trip"
+        elif frappe.db.exists("NetraNext Journey", trip_id):
+            doctype = "NetraNext Journey"
+        else:
+            # Maybe it's a flutter_journey_id
+            journey = frappe.db.get_value("NetraNext Journey", {"flutter_journey_id": trip_id}, "name")
+            if journey:
+                doctype = "NetraNext Journey"
+                trip_id = journey
+            else:
+                raise ResourceNotFoundException(f"Trip {trip_id} not found")
+
+        doc = frappe.get_doc(doctype, trip_id)
+
+        # 1. Update Destination if provided (only for Journey, as Scheduled Trip is a Link field)
+        if new_destination:
+            if doctype == "NetraNext Journey" and hasattr(doc, "end_location"):
+                doc.end_location = new_destination
+                doc.save(ignore_permissions=True)
+
+        # 2. Add Comment (Timeline Stop)
+        dest_str = f" to {new_destination}" if new_destination else ""
+        content = f"<b>Trip Extended</b>{dest_str}<br><b>Reason:</b> {reason}"
+        
+        comment = frappe.get_doc({
+            "doctype": "Comment",
+            "comment_type": "Comment",
+            "reference_doctype": doctype,
+            "reference_name": trip_id,
+            "content": content
+        })
+        comment.insert(ignore_permissions=True)
+        
+        # 3. Update Metadata if Journey
+        if doctype == "NetraNext Journey" and hasattr(doc, "metadata"):
+            import json
+            try:
+                meta = json.loads(doc.metadata) if doc.metadata else {}
+                stops = meta.get("extended_stops", [])
+                stops.append({
+                    "reason": reason,
+                    "destination": new_destination,
+                    "timestamp": frappe.utils.now()
+                })
+                meta["extended_stops"] = stops
+                doc.metadata = json.dumps(meta)
+                doc.save(ignore_permissions=True)
+            except Exception as e:
+                tenant_bench_logger.warning(f"Failed to update metadata for {trip_id}: {str(e)}", "JOURNEY_SYNC")
+
+        tenant_bench_logger.info(f"Trip {trip_id} extended successfully. Reason: {reason}", "JOURNEY_SYNC")
+
+        return create_success_response(
+            message="Trip extended successfully",
+            data={
+                "trip_id": trip_id,
+                "reason": reason,
+                "new_destination": new_destination
+            }
+        )
+
+    except Exception as e:
+        return handle_api_exception(e, "JOURNEY_SYNC")
