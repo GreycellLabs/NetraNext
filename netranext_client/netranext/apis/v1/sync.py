@@ -1141,7 +1141,7 @@ def store_face_registration_request():
 
 
 @frappe.whitelist(allow_guest=True)
-def get_all_employees():
+def get_all_employees(user_id=None):
     """
     Get all active employees from the tenant bench
     Called by central server to sync contacts directory
@@ -1150,10 +1150,32 @@ def get_all_employees():
         # Validate sync request
         validate_sync_request()
 
+        filters = {"status": "Active"}
+        
+        # If user_id is provided, only return employees assigned to this user via ToDo
+        if user_id:
+            assigned_todos = frappe.get_all(
+                "ToDo",
+                filters={
+                    "allocated_to": user_id,
+                    "reference_type": "Employee",
+                    "status": "Open"
+                },
+                pluck="reference_name"
+            )
+            
+            if assigned_todos:
+                filters["name"] = ["in", assigned_todos]
+            else:
+                return create_success_response(
+                    message="Active employees retrieved successfully",
+                    data=[]
+                )
+
         # Get all active employees
         employees = frappe.get_all(
             "Employee",
-            filters={"status": "Active"},
+            filters=filters,
             fields=[
                 "name",
                 "first_name",
