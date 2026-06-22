@@ -18,6 +18,17 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
         if not date_to:
             date_to = datetime.now().strftime('%Y-%m-%d')
 
+        # Expand date query boundaries by 1 day to prevent timezone shifts from cutting off journeys
+        from datetime import timedelta
+        try:
+            dt_from = datetime.strptime(date_from, '%Y-%m-%d') - timedelta(days=1)
+            dt_to = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+            db_date_from = dt_from.strftime('%Y-%m-%d')
+            db_date_to = dt_to.strftime('%Y-%m-%d')
+        except Exception:
+            db_date_from = date_from
+            db_date_to = date_to
+
         # Get REAL employee count from local Employee database
         try:
             total_employees = frappe.db.count("Employee", {"status": "Active"})
@@ -62,7 +73,7 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                     LIMIT %s
                 """
 
-                journey_records = frappe.db.sql(journey_sql, (date_from, date_to, int(limit)), as_dict=True)
+                journey_records = frappe.db.sql(journey_sql, (db_date_from, db_date_to, int(limit)), as_dict=True)
                 
                 import json
                 for journey in journey_records:
@@ -85,8 +96,8 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                         "name": journey.name,
                         "employee": journey.employee,
                         "employee_name": employee_name,
-                        "start_time": str(journey.start_time) if journey.start_time else "",
-                        "end_time": str(journey.end_time) if journey.end_time else "",
+                        "start_time": journey.start_time.isoformat() + "Z" if hasattr(journey.start_time, "isoformat") else (str(journey.start_time) if journey.start_time else ""),
+                        "end_time": journey.end_time.isoformat() + "Z" if hasattr(journey.end_time, "isoformat") else (str(journey.end_time) if journey.end_time else ""),
                         "start_location": journey.start_location or "Unknown",
                         "end_location": journey.end_location or "Unknown",
                         "distance_km": journey.total_distance or 0,

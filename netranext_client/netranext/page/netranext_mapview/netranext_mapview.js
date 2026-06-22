@@ -1,40 +1,113 @@
 // NetraNext Map View Page - Premium UI with Real Data
 
-// Helper function to format time to 12-hour (AM/PM)
+// Helper function to format time to 12-hour (AM/PM) in local timezone
 function format_time_12hr(timeStr) {
     if (!timeStr || timeStr === '-' || timeStr === 'Pending...') return timeStr;
-    if (timeStr.includes('T')) {
-        var timePart = timeStr.split('T')[1];
-        if (timePart) {
-            timeStr = timePart.split('.')[0]; // remove milliseconds and Z
-        }
+    
+    // Check if it is already formatted in 12-hour format
+    if (timeStr.includes('AM') || timeStr.includes('PM')) {
+        return timeStr;
     }
-    var parts = timeStr.trim().split(':');
+
+    try {
+        var date;
+        var formattedStr = timeStr.toString().trim();
+        
+        // If it's a full ISO or space-separated datetime string
+        if (formattedStr.includes('-') && (formattedStr.includes(':') || formattedStr.includes('T'))) {
+            if (!formattedStr.includes('T')) {
+                formattedStr = formattedStr.replace(' ', 'T');
+            }
+            if (!formattedStr.endsWith('Z') && !formattedStr.includes('+')) {
+                formattedStr += 'Z';
+            }
+            date = new Date(formattedStr);
+        } else {
+            // Just a time string like "10:00:00"
+            var today = new Date();
+            var yyyy = today.getFullYear();
+            var mm = String(today.getMonth() + 1).padStart(2, '0');
+            var dd = String(today.getDate()).padStart(2, '0');
+            date = new Date(yyyy + '-' + mm + '-' + dd + 'T' + formattedStr + 'Z');
+        }
+
+        if (isNaN(date.getTime())) {
+            return fallback_parse_time(timeStr);
+        }
+
+        var hours = date.getHours();
+        var minutes = date.getMinutes();
+        var ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12; // '0' becomes '12'
+        
+        var hrStr = hours < 10 ? '0' + hours : hours;
+        var minStr = minutes < 10 ? '0' + minutes : minutes;
+        
+        return hrStr + ':' + minStr + ' ' + ampm;
+    } catch (e) {
+        console.error("Error formatting time:", e);
+        return fallback_parse_time(timeStr);
+    }
+}
+
+// Fallback time parsing using string manipulation
+function fallback_parse_time(timeStr) {
+    var timePart = timeStr;
+    if (timeStr.includes('T')) {
+        timePart = timeStr.split('T')[1];
+    } else if (timeStr.includes(' ')) {
+        timePart = timeStr.split(' ')[1];
+    }
+    
+    if (!timePart) return timeStr;
+    var parts = timePart.trim().split(':');
     if (parts.length < 2) return timeStr;
 
     var hours = parseInt(parts[0]);
-    var minutes = parts[1];
+    var minutes = parts[1].split('.')[0].replace('Z', '');
+    if (isNaN(hours)) return timeStr;
+    
     var ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12;
-    hours = hours ? hours : 12; // '0' becomes '12'
+    hours = hours ? hours : 12;
     return (hours < 10 ? '0' + hours : hours) + ':' + minutes + ' ' + ampm;
 }
 
-// Helper function to format date
+// Helper function to format date in local timezone
 function formatDate(dateString) {
     if (!dateString) return '-';
-    dateString = dateString.toString().replace(/[\r\n]+/g, ' ').trim();
-
-    if (dateString.includes('T')) {
-        return dateString.split('T')[0];
+    try {
+        var formattedStr = dateString.toString().replace(/[\r\n]+/g, ' ').trim();
+        if (formattedStr.includes('-') && (formattedStr.includes(':') || formattedStr.includes('T'))) {
+            if (!formattedStr.includes('T')) {
+                formattedStr = formattedStr.replace(' ', 'T');
+            }
+            if (!formattedStr.endsWith('Z') && !formattedStr.includes('+')) {
+                formattedStr += 'Z';
+            }
+            var date = new Date(formattedStr);
+            if (!isNaN(date.getTime())) {
+                var yyyy = date.getFullYear();
+                var mm = String(date.getMonth() + 1).padStart(2, '0');
+                var dd = String(date.getDate()).padStart(2, '0');
+                return yyyy + '-' + mm + '-' + dd;
+            }
+        }
+    } catch (e) {
+        console.error("Error formatting date:", e);
     }
-
-    var firstSpace = dateString.indexOf(' ');
+    
+    // Fallback split logic
+    var dateStr = dateString.toString().replace(/[\r\n]+/g, ' ').trim();
+    if (dateStr.includes('T')) {
+        return dateStr.split('T')[0];
+    }
+    var firstSpace = dateStr.indexOf(' ');
     if (firstSpace > 0) {
-        return dateString.substring(0, firstSpace);
+        return dateStr.substring(0, firstSpace);
     }
-
-    return dateString;
+    return dateStr;
 }
 
 // Function to load Leaflet library dynamically
@@ -711,9 +784,9 @@ function get_filtered_journeys() {
     return journeys.filter(function (j) {
         var matchEmp = !f.employee || j.employee === f.employee || j.user_id === f.employee;
 
-        // Robust date comparison using split(' ')[0] to avoid timezone shifts
+        // Robust date comparison using formatDate to handle timezone shifts
         var rawDateStr = j.start_time || j.posting_date || '';
-        var jDate = rawDateStr.split(' ')[0];
+        var jDate = formatDate(rawDateStr);
         var matchDate = !f.date || jDate === f.date;
 
         return matchEmp && matchDate;
