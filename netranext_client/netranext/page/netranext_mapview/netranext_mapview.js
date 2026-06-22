@@ -3,6 +3,12 @@
 // Helper function to format time to 12-hour (AM/PM)
 function format_time_12hr(timeStr) {
     if (!timeStr || timeStr === '-' || timeStr === 'Pending...') return timeStr;
+    if (timeStr.includes('T')) {
+        var timePart = timeStr.split('T')[1];
+        if (timePart) {
+            timeStr = timePart.split('.')[0]; // remove milliseconds and Z
+        }
+    }
     var parts = timeStr.trim().split(':');
     if (parts.length < 2) return timeStr;
 
@@ -498,7 +504,31 @@ function render_journeys_on_map() {
         startMarker.bindPopup(create_journey_popup(j, 'start'));
         endMarker.bindPopup(create_journey_popup(j, 'end'));
 
-        window.mapViewData.markers[id] = [startMarker, endMarker];
+        var journeyMarkers = [startMarker, endMarker];
+
+        // Draw intermediate extended waypoints if present
+        if (j.raw_coordinates && j.raw_coordinates.length > 0) {
+            j.raw_coordinates.forEach(function(coord) {
+                if (coord.label === 'Trip Extended' || coord.label === 'Extended') {
+                    var lat = coord.latitude || coord.lat;
+                    var lng = coord.longitude || coord.lng;
+                    var extendMarker = L.marker([lat, lng], { icon: create_marker_icon('extended', color) })
+                        .addTo(window.mapViewData.map);
+                    
+                    extendMarker.bindPopup(create_journey_popup(j, 'extended', coord));
+                    
+                    if (isSelected) {
+                        extendMarker.setOpacity(1);
+                    } else {
+                        extendMarker.setOpacity(0.5);
+                    }
+                    
+                    journeyMarkers.push(extendMarker);
+                }
+            });
+        }
+
+        window.mapViewData.markers[id] = journeyMarkers;
 
         if (isSelected) {
             startMarker.setOpacity(1);
@@ -521,7 +551,12 @@ function render_journeys_on_map() {
 }
 
 function create_marker_icon(type, color) {
-    var iconColor = type === 'start' ? '#10b981' : '#ef4444';
+    var iconColor = '#ef4444'; // Red for end
+    if (type === 'start') {
+        iconColor = '#10b981'; // Green for start
+    } else if (type === 'extended') {
+        iconColor = '#fbbf24'; // Yellow for extended
+    }
     var svg = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
         '<path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="' + iconColor + '"/>' +
         '<circle cx="12" cy="9" r="3" fill="white"/>' +
@@ -536,11 +571,11 @@ function create_marker_icon(type, color) {
     });
 }
 
-function create_journey_popup(j, type) {
-    var title = type === 'start' ? 'Trip Start' : 'Trip End';
-    var accentColor = type === 'start' ? '#10b981' : '#ef4444';
-    var timeStr = type === 'start' ? j.start_time : j.end_time;
-    var locationStr = type === 'start' ? (j.start_location || 'Start point') : (j.end_location || 'End point');
+function create_journey_popup(j, type, coord) {
+    var title = type === 'start' ? 'Trip Start' : (type === 'extended' ? 'Trip Extended' : 'Trip End');
+    var accentColor = type === 'start' ? '#10b981' : (type === 'extended' ? '#fbbf24' : '#ef4444');
+    var timeStr = type === 'start' ? j.start_time : (type === 'extended' ? (coord ? coord.timestamp : '') : j.end_time);
+    var locationStr = type === 'start' ? (j.start_location || 'Start point') : (type === 'extended' ? (coord ? (coord.latitude + ', ' + coord.longitude) : 'Extended point') : (j.end_location || 'End point'));
     var displayLocation = format_location_display(locationStr);
 
     return '<div class="rich-popup">' +
