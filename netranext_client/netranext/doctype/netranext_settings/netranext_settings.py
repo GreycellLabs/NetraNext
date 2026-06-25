@@ -17,6 +17,21 @@ class NetraNextSettings(Document):
             self.central_server_url = DEFAULT_CENTRAL_SERVER_URL
         self.validate_connection_details()
         self.prevent_central_server_url_change()
+        self.make_business_logo_public()
+
+    def make_business_logo_public(self):
+        """Ensure the business logo is public so the mobile app can load it without credentials"""
+        if self.business_logo and "/private/" in self.business_logo:
+            file_docs = frappe.get_all("File", filters={"file_url": self.business_logo}, limit=1)
+            if file_docs:
+                try:
+                    file_doc = frappe.get_doc("File", file_docs[0].name)
+                    if file_doc.is_private:
+                        file_doc.is_private = 0
+                        file_doc.save(ignore_permissions=True)
+                        self.business_logo = file_doc.file_url
+                except Exception as e:
+                    frappe.log_error(f"Failed to make business logo public: {str(e)}")
 
     def validate_connection_details(self):
         if not self.api_key:
