@@ -8,6 +8,7 @@
  "issingle": 1,
  "field_order": [
   "tenant_name",
+  "business_logo",
   "tenant_id",
   "expense_claim_type",
   "expense_rate",
@@ -31,6 +32,11 @@
    "fieldtype": "Data",
    "label": "Tenant Name",
    "reqd": 1
+  },
+  {
+   "fieldname": "business_logo",
+   "fieldtype": "Attach Image",
+   "label": "Business Logo"
   },
   {
    "fieldname": "tenant_id",

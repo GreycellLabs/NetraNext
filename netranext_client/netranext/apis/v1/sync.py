@@ -666,6 +666,11 @@ def authenticate_user(email=None, password=None):
             employee_id = None
             tenant_bench_logger.warning(f"No employee found for user {user}", "TENANT_AUTH")
 
+        # Get custom business logo if configured
+        business_logo = frappe.db.get_single_value("NetraNext Settings", "business_logo")
+        if business_logo and business_logo.startswith("/"):
+            business_logo = frappe.utils.get_url(business_logo)
+
         # Build response data
         response_data = {
             "user": user,
@@ -674,7 +679,8 @@ def authenticate_user(email=None, password=None):
             "user_type": user_doc.user_type,
             "enabled": user_doc.enabled,
             "employee_id": employee_id,
-            "employee_data": employee_data
+            "employee_data": employee_data,
+            "business_logo": business_logo or None
         }
 
         tenant_bench_logger.info(f"User {user} authenticated successfully", "TENANT_AUTH")

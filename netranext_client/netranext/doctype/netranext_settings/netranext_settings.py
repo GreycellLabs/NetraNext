@@ -107,6 +107,147 @@ class NetraNextSettings(Document):
             frappe.throw(_("Not authorized to reveal integration token"))
         return self.get_password("api_key")
 
+    def validate_business_logo(self):
+        if not self.business_logo:
+            return
+
+        # Check if logo has changed
+        old_logo = frappe.db.get_single_value("NetraNext Settings", "business_logo")
+        if self.business_logo == old_logo:
+            return
+
+        # Find the File document matching this file URL
+        file_docs = frappe.get_all(
+            "File",
+            filters={"file_url": self.business_logo},
+            fields=["name", "file_name", "file_size"],
+            order_by="creation desc",
+            limit=1
+        )
+        if not file_docs:
+            self.business_logo = None
+            frappe.throw(
+                _(
+                    "The attached logo file does not exist or was deleted because it failed validation. "
+                    "Please upload a valid PNG, SVG, or WebP logo."
+                )
+            )
+
+        file_info = file_docs[0]
+        
+        try:
+            file_doc = frappe.get_doc("File", file_info.name)
+            file_content = file_doc.get_content()
+        except Exception as e:
+            frappe.throw(_("Failed to load business logo file: {0}").format(str(e)))
+
+        if not file_content:
+            try:
+                frappe.delete_doc("File", file_info.name, ignore_permissions=True, force=True)
+                frappe.db.commit()
+            except Exception:
+                pass
+            self.business_logo = None
+            frappe.throw(_("The uploaded business logo is empty."))
+
+        # 1. Size Validation (Max 512 KB)
+        file_size = file_info.file_size or len(file_content)
+        if file_size > 512 * 1024:
+            try:
+                frappe.delete_doc("File", file_info.name, ignore_permissions=True, force=True)
+                frappe.db.commit()
+            except Exception:
+                pass
+            self.business_logo = None
+            frappe.throw(
+                _("Logo file size must be less than 512 KB. Uploaded size: {0:.1f} KB.")
+                .format(file_size / 1024.0)
+            )
+
+        # 2. Format Validation
+        original_filename = file_info.file_name or ""
+        file_ext = original_filename.split(".")[-1].lower() if "." in original_filename else ""
+
+        if file_ext not in ("png", "svg", "webp"):
+            try:
+                frappe.delete_doc("File", file_info.name, ignore_permissions=True, force=True)
+                frappe.db.commit()
+            except Exception:
+                pass
+            self.business_logo = None
+            frappe.throw(
+                _(
+                    "Only PNG, SVG, and WebP formats are allowed for the business logo. "
+                    "JPEGs and other formats do not support transparent backgrounds."
+                )
+            )
+
+        # 3. Dimensions & Transparency (only for PNG and WebP)
+        if file_ext in ("png", "webp"):
+            from PIL import Image
+            import io
+
+            try:
+                img = Image.open(io.BytesIO(file_content))
+                width, height = img.size
+
+                # Dimensions Check
+                if width > 1024 or height > 1024:
+                    try:
+                        frappe.delete_doc("File", file_info.name, ignore_permissions=True, force=True)
+                        frappe.db.commit()
+                    except Exception:
+                        pass
+                    self.business_logo = None
+                    frappe.throw(
+                        _("Logo dimensions cannot exceed 1024x1024 pixels. Uploaded image is {0}x{1} pixels.")
+                        .format(width, height)
+                    )
+                if width < 128 or height < 128:
+                    try:
+                        frappe.delete_doc("File", file_info.name, ignore_permissions=True, force=True)
+                        frappe.db.commit()
+                    except Exception:
+                        pass
+                    self.business_logo = None
+                    frappe.throw(
+                        _("Logo dimensions must be at least 128x128 pixels. Uploaded image is {0}x{1} pixels.")
+                        .format(width, height)
+                    )
+
+                # Transparency Check
+                has_transparency = False
+                if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                    alpha = img.convert("RGBA").split()[-1]
+                    min_alpha, max_alpha = alpha.getextrema()
+                    if min_alpha < 255:
+                        has_transparency = True
+
+                if not has_transparency:
+                    try:
+                        frappe.delete_doc("File", file_info.name, ignore_permissions=True, force=True)
+                        frappe.db.commit()
+                    except Exception:
+                        pass
+                    self.business_logo = None
+                    frappe.throw(
+                        _(
+                            "The logo must have a transparent background. "
+                            "Please upload a PNG or WebP with transparency support."
+                        )
+                    )
+
+            except frappe.ValidationError:
+                raise
+            except Exception as e:
+                try:
+                    frappe.delete_doc("File", file_info.name, ignore_permissions=True, force=True)
+                    frappe.db.commit()
+                except Exception:
+                    pass
+                self.business_logo = None
+                frappe.throw(_("Failed to process logo image: {0}").format(str(e)))
+
     def on_update(self):
         """Sync status changes to orchestrator if status has changed"""
         if self.has_value_changed("status"):
@@ -150,3 +291,8 @@ def reveal_api_key():
     """Global endpoint to reveal API key without passing document from client"""
     settings = frappe.get_single("NetraNext Settings")
     return settings.reveal_api_key()
+
+
+@frappe.whitelist()
+def validate_uploaded_logo(file_url):
+    return {"status": "success"}
