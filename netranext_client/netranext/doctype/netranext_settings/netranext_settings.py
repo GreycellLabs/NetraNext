@@ -52,8 +52,16 @@ class NetraNextSettings(Document):
             if not self.central_server_url:
                 self.central_server_url = DEFAULT_CENTRAL_SERVER_URL
             url = f"{self.central_server_url.rstrip('/')}/api/method/netranext.apis.v1.tenant_onboarding.activate_tenant_from_client"
+            
+            # Make logo URL absolute if configured
+            logo_url = self.business_logo
+            if logo_url and logo_url.startswith("/"):
+                logo_url = frappe.utils.get_url(logo_url)
+
             headers = {
-                "X-NetraNext-Token": self.get_password("api_key")
+                "X-NetraNext-Token": self.get_password("api_key"),
+                "X-Client-Site-Url": frappe.utils.get_url(),
+                "X-Client-Logo-Url": logo_url or ""
             }
 
             response = requests.get(url, headers=headers, timeout=10)
@@ -264,12 +272,12 @@ class NetraNextSettings(Document):
                 frappe.throw(_("Failed to process logo image: {0}").format(str(e)))
 
     def on_update(self):
-        """Sync status changes to orchestrator if status has changed"""
-        if self.has_value_changed("status"):
+        """Sync status and logo changes to orchestrator if they have changed"""
+        if self.has_value_changed("status") or self.has_value_changed("business_logo"):
             self.sync_status_to_orchestrator()
 
     def sync_status_to_orchestrator(self):
-        """Send status update payload to Central Orchestrator"""
+        """Send status and logo update payload to Central Orchestrator"""
         if not self.central_server_url or not self.api_key:
             return
 
@@ -280,17 +288,24 @@ class NetraNextSettings(Document):
                 "X-NetraNext-Token": self.get_password("api_key"),
                 "Content-Type": "application/json"
             }
+            
+            # Make logo URL absolute if configured
+            logo_url = self.business_logo
+            if logo_url and logo_url.startswith("/"):
+                logo_url = frappe.utils.get_url(logo_url)
+
             payload = {
-                "status": self.status
+                "status": self.status,
+                "logo": logo_url or ""
             }
             response = requests.post(url, json=payload, headers=headers, timeout=10)
             if response.status_code != 200:
                 frappe.logger().warning(
-                    f"Failed to sync status change to orchestrator. HTTP Status: {response.status_code}"
+                    f"Failed to sync status/logo change to orchestrator. HTTP Status: {response.status_code}"
                 )
         except Exception as e:
             frappe.logger().warning(
-                f"Failed to sync status change to orchestrator: {str(e)}"
+                f"Failed to sync status/logo change to orchestrator: {str(e)}"
             )
 
 
