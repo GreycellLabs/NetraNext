@@ -242,20 +242,116 @@ def store_attendance(att_data):
                 tenant_bench_logger.warning(f"Could not download photo, using remote URL: {str(photo_err)}", "ATTENDANCE_SYNC")
 
         # Create Employee Checkin record
+        latitude = att_data.get("latitude")
+        longitude = att_data.get("longitude")
+        if latitude is not None:
+            try:
+                latitude = float(latitude)
+            except (ValueError, TypeError):
+                latitude = None
+        if longitude is not None:
+            try:
+                longitude = float(longitude)
+            except (ValueError, TypeError):
+                longitude = None
+
+        employee_id = att_data["employee_id"]
+
+        # Fetch employee's assigned locations from custom_assigned_locations child table
+        assigned_locations = frappe.get_all("NetraNext Employee Location", filters={
+            "parent": employee_id,
+            "parenttype": "Employee",
+            "parentfield": "custom_assigned_locations"
+        }, fields=["location", "latitude", "longitude", "radius_meters", "location_name"])
+
+        in_geofence = True
+        if assigned_locations:
+            in_geofence = False
+            if latitude is not None and longitude is not None:
+                import math
+                for loc in assigned_locations:
+                    if loc.latitude is not None and loc.longitude is not None:
+                        # Haversine distance formula
+                        R = 6371000.0
+                        lat1, lon1 = latitude, longitude
+                        lat2, lon2 = float(loc.latitude), float(loc.longitude)
+                        
+                        phi1 = math.radians(lat1)
+                        phi2 = math.radians(lat2)
+                        delta_phi = math.radians(lat2 - lat1)
+                        delta_lambda = math.radians(lon2 - lon1)
+                        
+                        a = math.sin(delta_phi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
+                        c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+                        dist = R * c
+                        
+                        radius = loc.radius_meters or 100
+                        if dist <= radius:
+                            in_geofence = True
+                            break
+
         checkin_doc = frappe.get_doc({
             "doctype": "Employee Checkin",
-            "employee": att_data["employee_id"],
+            "employee": employee_id,
             "time": att_data["time"],
             "log_type": att_data["log_type"],
             "device_id": att_data.get("device_id", "NetraNext"),
-            "latitude": att_data.get("latitude"),
-            "longitude": att_data.get("longitude"),
+            "latitude": latitude,
+            "longitude": longitude,
             "location_address": att_data.get("location_address"),
             "photo_proof": local_photo_url,
-            "skip_auto_attendance": att_data.get("skip_auto_attendance", 0)
+            "skip_auto_attendance": 0 if in_geofence else 1,
+            "custom_location_status": "Approved" if in_geofence else "Pending Approval"
         })
 
         checkin_doc.insert(ignore_permissions=True)
+
+        # If outside geofence, create approval request and assign ToDos to supervisor and HR Managers
+        if not in_geofence:
+            try:
+                approval_doc = frappe.get_doc({
+                    "doctype": "NetraNext Location Checkin Approval",
+                    "employee": employee_id,
+                    "employee_checkin": checkin_doc.name,
+                    "log_type": att_data["log_type"],
+                    "time": att_data["time"],
+                    "latitude": latitude or 0.0,
+                    "longitude": longitude or 0.0,
+                    "status": "Pending"
+                })
+                approval_doc.insert(ignore_permissions=True)
+
+                # Find supervisor user ID
+                employee_doc = frappe.get_doc("Employee", employee_id)
+                supervisor_user = None
+                if employee_doc.reports_to:
+                    supervisor_user = frappe.db.get_value("Employee", employee_doc.reports_to, "user_id")
+
+                # Find HR Manager user IDs
+                hr_managers = frappe.get_all("Has Role", filters={"role": "HR Manager"}, pluck="parent")
+                active_hr_managers = frappe.get_all("User", filters={"enabled": 1, "name": ["in", hr_managers]}, pluck="name")
+
+                users_to_assign = set()
+                if supervisor_user:
+                    users_to_assign.add(supervisor_user)
+                for hr_m in active_hr_managers:
+                    users_to_assign.add(hr_m)
+
+                for user in users_to_assign:
+                    try:
+                        todo = frappe.get_doc({
+                            "doctype": "ToDo",
+                            "description": f"Location Checkin Approval required for {employee_doc.employee_name or employee_id}",
+                            "reference_type": "NetraNext Location Checkin Approval",
+                            "reference_name": approval_doc.name,
+                            "allocated_to": user,
+                            "status": "Open"
+                        })
+                        todo.insert(ignore_permissions=True)
+                    except Exception as todo_err:
+                        tenant_bench_logger.warning(f"Could not create ToDo for {user}: {str(todo_err)}", "ATTENDANCE_SYNC")
+            except Exception as approval_err:
+                tenant_bench_logger.error(f"Failed to create Location Checkin Approval: {str(approval_err)}", "ATTENDANCE_SYNC")
 
         tenant_bench_logger.info(f"Attendance stored for employee {att_data['employee_id']}", "ATTENDANCE_SYNC")
 

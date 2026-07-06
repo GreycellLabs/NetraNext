@@ -288,6 +288,21 @@ api_whitelisted_methods = [
 # Custom Fields
 # -------------------------------
 custom_fields = {
+    "Employee": [
+        {
+            "fieldname": "custom_assigned_locations_section",
+            "fieldtype": "Section Break",
+            "label": "Assigned Locations",
+            "insert_after": "status"
+        },
+        {
+            "fieldname": "custom_assigned_locations",
+            "fieldtype": "Table",
+            "label": "Assigned Locations",
+            "options": "NetraNext Employee Location",
+            "insert_after": "custom_assigned_locations_section"
+        }
+    ],
     "Employee Checkin": [
         {
             "fieldname": "log_type_col",
@@ -338,9 +353,19 @@ custom_fields = {
             "fieldtype": "HTML",
             "label": "Location Map",
             "insert_after": "location_address"
+        },
+        {
+            "fieldname": "custom_location_status",
+            "fieldtype": "Select",
+            "label": "Location Status",
+            "options": "Approved\nPending Approval\nRejected",
+            "default": "Approved",
+            "insert_after": "location_map",
+            "read_only": 1
         }
     ]
 }
+
 
 # CORS Configuration for Central Server Access
 # --------------------------------------------

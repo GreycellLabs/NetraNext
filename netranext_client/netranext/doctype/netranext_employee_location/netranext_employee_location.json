@@ -1,0 +1,72 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "creation": "2026-07-06 00:00:00",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "engine": "InnoDB",
+ "field_order": [
+  "location",
+  "location_name",
+  "latitude",
+  "longitude",
+  "radius_meters"
+ ],
+ "fields": [
+  {
+   "fieldname": "location",
+   "fieldtype": "Link",
+   "label": "Location",
+   "options": "NetraNext Location",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fetch_from": "location.location_name",
+   "fieldname": "location_name",
+   "fieldtype": "Data",
+   "label": "Location Name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fetch_from": "location.latitude",
+   "fieldname": "latitude",
+   "fieldtype": "Float",
+   "label": "Latitude",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fetch_from": "location.longitude",
+   "fieldname": "longitude",
+   "fieldtype": "Float",
+   "label": "Longitude",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fetch_from": "location.radius_meters",
+   "fieldname": "radius_meters",
+   "fieldtype": "Int",
+   "label": "Radius (meters)",
+   "read_only": 1,
+   "in_list_view": 1
+  }
+ ],
+ "hide_toolbar": 0,
+ "icon": "fa fa-map-pin",
+ "idx": 0,
+ "istable": 1,
+ "is_submittable": 0,
+ "modified": "2026-07-06 00:00:00",
+ "modified_by": "Administrator",
+ "module": "NetraNext",
+ "name": "NetraNext Employee Location",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "controller": "netranext.doctype.netranext_employee_location.netranext_employee_location"
+}
