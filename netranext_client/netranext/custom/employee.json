@@ -1,0 +1,23 @@
+{
+	"custom_fields": [
+		{
+			"fieldname": "custom_assigned_locations_section",
+			"fieldtype": "Section Break",
+			"label": "Assigned Locations",
+			"insert_after": "status",
+			"dt": "Employee"
+		},
+		{
+			"fieldname": "custom_assigned_locations",
+			"fieldtype": "Table",
+			"label": "Assigned Locations",
+			"options": "NetraNext Employee Location",
+			"insert_after": "custom_assigned_locations_section",
+			"dt": "Employee"
+		}
+	],
+	"custom_perms": [],
+	"doctype": "Employee",
+	"property_setters": [],
+	"sync_on_migrate": 1
+}

@@ -56,6 +56,16 @@
 			"label": "Location Map",
 			"insert_after": "location_address",
 			"dt": "Employee Checkin"
+		},
+		{
+			"fieldname": "custom_location_status",
+			"fieldtype": "Select",
+			"label": "Location Status",
+			"options": "Approved\nPending Approval\nRejected",
+			"default": "Approved",
+			"insert_after": "location_map",
+			"read_only": 1,
+			"dt": "Employee Checkin"
 		}
 	],
 	"custom_perms": [],
