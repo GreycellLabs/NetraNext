@@ -11,16 +11,13 @@ class NetraNextFaceRegistrationRequest(Document):
 		if self.status != "Pending":
 			frappe.throw("This request is not pending approval.")
 
-		# 1. Update/Create the active face registration locally
-		self.update_active_registration_local()
-
-		# 2. Update the employee's attendance_device_id
+		# 1. Update the employee's attendance_device_id
 		frappe.db.set_value("Employee", self.employee, "attendance_device_id", self.face_id)
 
-		# 3. Call Orchestrator to approve the request there
+		# 2. Call Orchestrator to approve the request there
 		self.sync_action_to_orchestrator(action="approve")
 
-		# 4. Set request status to Approved
+		# 3. Set request status to Approved
 		self.status = "Approved"
 		self.actioned_by = frappe.session.user
 		self.actioned_date = frappe.utils.now_datetime()
@@ -44,33 +41,6 @@ class NetraNextFaceRegistrationRequest(Document):
 		self.save()
 
 		frappe.msgprint("Face registration request rejected.")
-
-	def update_active_registration_local(self):
-		"""Create or update active Face Registration record locally"""
-		if self.request_type == "Register":
-			# Ensure not already registered
-			if frappe.db.exists("NetraNext Face Registration", {"employee": self.employee}):
-				frappe.throw("Face is already registered for this employee.")
-
-			reg = frappe.get_doc({
-				"doctype": "NetraNext Face Registration",
-				"employee": self.employee,
-				"face_id": self.face_id,
-				"face_photo": self.face_photo,
-				"face_embedding": self.face_embedding,
-				"registered_date": frappe.utils.now_datetime()
-			})
-			reg.insert(ignore_permissions=True)
-		else:  # Update
-			reg_name = frappe.db.get_value("NetraNext Face Registration", {"employee": self.employee}, "name")
-			if not reg_name:
-				frappe.throw("Active face registration not found for update.")
-
-			reg = frappe.get_doc("NetraNext Face Registration", reg_name)
-			reg.face_photo = self.face_photo
-			reg.face_embedding = self.face_embedding
-			reg.registered_date = frappe.utils.now_datetime()
-			reg.save(ignore_permissions=True)
 
 	def on_trash(self):
 		"""When client bench record is deleted, also delete orchestrator's copy"""

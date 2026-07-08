@@ -413,8 +413,8 @@ function render_dashboard(data) {
             <span class="shortcut-label">Attendance Logs</span>
             <span class="shortcut-arrow">↗</span>
         </div>
-        <div class="shortcut-item" onclick="frappe.set_route('List', 'NetraNext Face Registration')">
-            <span class="shortcut-label">Face Registrations</span>
+        <div class="shortcut-item" onclick="frappe.set_route('List', 'NetraNext Face Registration Request')">
+            <span class="shortcut-label">Face Registration Requests</span>
             <span class="shortcut-arrow">↗</span>
         </div>
         <div class="shortcut-item" onclick="frappe.set_route('List', 'NetraNext Journey')">
@@ -630,8 +630,8 @@ function render_attendance_table(attendance) {
                     <button onclick="frappe.set_route('List', 'Employee Checkin')" style="padding: 10px 20px; background: #6366f1; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='#6366f1'">
                         <i class="fa fa-plus" style="margin-right: 6px;"></i>Mark Attendance
                     </button>
-                    <button onclick="frappe.set_route('List', 'NetraNext Face Registration')" style="padding: 10px 20px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
-                        <i class="fa fa-user" style="margin-right: 6px;"></i>Face Registration
+                    <button onclick="frappe.set_route('List', 'NetraNext Face Registration Request')" style="padding: 10px 20px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
+                        <i class="fa fa-user" style="margin-right: 6px;"></i>Face Registration Requests
                     </button>
                 </div>
             </div>

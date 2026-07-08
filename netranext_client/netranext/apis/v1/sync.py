@@ -373,7 +373,7 @@ def store_attendance(att_data):
 def store_face(face_data):
     """
     Store face registration from central server
-    Creates or updates NetraNext Face Registration on tenant bench
+    Updates Employee attendance_device_id on tenant bench
 
     Args:
         face_data: Face registration dict with employee, embedding, photo, etc.
@@ -390,81 +390,10 @@ def store_face(face_data):
             face_data = json.loads(face_data)
 
         # Validate required fields
-        validate_required_fields(face_data, ["employee_id", "face_id", "embedding"])
+        validate_required_fields(face_data, ["employee_id", "face_id"])
 
         # Check if employee exists
         validate_employee_exists(face_data["employee_id"])
-
-        # Check if NetraNext Face Registration DocType exists
-        if not frappe.db.exists("DocType", "NetraNext Face Registration"):
-            raise ResourceNotFoundException("NetraNext Face Registration DocType")
-
-        # Check if face registration already exists
-        existing = frappe.db.exists(
-            "NetraNext Face Registration",
-            {"employee": face_data["employee_id"]}
-        )
-
-        # Download photo from orchestrator and save locally on client bench
-        local_photo_url = face_data.get("face_photo_url")
-        remote_photo_url = face_data.get("face_photo_url")
-        if remote_photo_url:
-            # If relative URL, make it absolute using central_server_url
-            if not remote_photo_url.startswith("http"):
-                central_url = frappe.db.get_single_value("NetraNext Settings", "central_server_url")
-                if central_url:
-                    central_url = central_url.rstrip("/")
-                    remote_photo_url = f"{central_url}/{remote_photo_url.lstrip('/')}"
-
-            if remote_photo_url.startswith("http"):
-                try:
-                    import requests
-                    from frappe.utils.file_manager import save_file
-                    import os
-
-                    response = requests.get(remote_photo_url, timeout=15)
-                    if response.status_code == 200:
-                        filename = os.path.basename(remote_photo_url.split("?")[0])
-                        file_doc = save_file(
-                            fname=filename,
-                            content=response.content,
-                            dt="NetraNext Face Registration",
-                            dn=face_data["face_id"],
-                            is_private=0
-                        )
-                        if file_doc:
-                            local_photo_url = file_doc.file_url
-                            tenant_bench_logger.info(f"Face photo saved locally: {local_photo_url}", "FACE_SYNC")
-                except Exception as photo_err:
-                    tenant_bench_logger.warning(f"Could not download face photo, using remote URL: {str(photo_err)}", "FACE_SYNC")
-
-        if existing:
-            # Update existing registration
-            frappe.db.set_value(
-                "NetraNext Face Registration",
-                existing,
-                {
-                    "face_id": face_data["face_id"],
-                    "face_embedding": json.dumps(face_data["embedding"]) if isinstance(face_data["embedding"], list) else face_data["embedding"],
-                    "face_photo": local_photo_url,
-                    "registered_date": face_data.get("registered_date")
-                }
-            )
-            face_name = existing
-            action = "updated"
-        else:
-            # Create new registration
-            face_doc = frappe.get_doc({
-                "doctype": "NetraNext Face Registration",
-                "employee": face_data["employee_id"],
-                "face_id": face_data["face_id"],
-                "face_embedding": json.dumps(face_data["embedding"]) if isinstance(face_data["embedding"], list) else face_data["embedding"],
-                "face_photo": local_photo_url,
-                "registered_date": face_data.get("registered_date")
-            })
-            face_doc.insert(ignore_permissions=True)
-            face_name = face_doc.name
-            action = "created"
 
         # Update employee attendance_device_id
         frappe.db.set_value(
@@ -474,15 +403,14 @@ def store_face(face_data):
             face_data["face_id"]
         )
 
-        tenant_bench_logger.info(f"Face registration {action} for employee {face_data['employee_id']}", "FACE_SYNC")
+        tenant_bench_logger.info(f"Face registration synced successfully for employee {face_data['employee_id']}", "FACE_SYNC")
 
         return create_success_response(
-            message=f"Face registration {action} successfully",
+            message="Face registration synced successfully",
             data={
-                "face_name": face_name,
                 "face_id": face_data["face_id"],
                 "employee_id": face_data["employee_id"],
-                "action": action
+                "action": "synced"
             }
         )
 
