@@ -16,6 +16,7 @@
   "column_break_0",
   "latitude",
   "longitude",
+  "location_address",
   "status",
   "approver",
   "approval_date"
@@ -74,6 +75,12 @@
    "fieldtype": "Float",
    "label": "Longitude",
    "reqd": 1
+  },
+  {
+   "fieldname": "location_address",
+   "fieldtype": "Text",
+   "label": "Location Address",
+   "read_only": 1
   },
   {
    "fieldname": "status",

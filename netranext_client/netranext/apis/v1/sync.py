@@ -306,7 +306,7 @@ def store_attendance(att_data):
 
         checkin_doc.insert(ignore_permissions=True)
 
-        # If outside geofence, create approval request and assign ToDos to supervisor and HR Managers
+        # If outside geofence, create approval request
         if not in_geofence:
             try:
                 approval_doc = frappe.get_doc({
@@ -317,39 +317,10 @@ def store_attendance(att_data):
                     "time": att_data["time"],
                     "latitude": latitude or 0.0,
                     "longitude": longitude or 0.0,
+                    "location_address": att_data.get("location_address"),
                     "status": "Pending"
                 })
                 approval_doc.insert(ignore_permissions=True)
-
-                # Find supervisor user ID
-                employee_doc = frappe.get_doc("Employee", employee_id)
-                supervisor_user = None
-                if employee_doc.reports_to:
-                    supervisor_user = frappe.db.get_value("Employee", employee_doc.reports_to, "user_id")
-
-                # Find HR Manager user IDs
-                hr_managers = frappe.get_all("Has Role", filters={"role": "HR Manager"}, pluck="parent")
-                active_hr_managers = frappe.get_all("User", filters={"enabled": 1, "name": ["in", hr_managers]}, pluck="name")
-
-                users_to_assign = set()
-                if supervisor_user:
-                    users_to_assign.add(supervisor_user)
-                for hr_m in active_hr_managers:
-                    users_to_assign.add(hr_m)
-
-                for user in users_to_assign:
-                    try:
-                        todo = frappe.get_doc({
-                            "doctype": "ToDo",
-                            "description": f"Location Checkin Approval required for {employee_doc.employee_name or employee_id}",
-                            "reference_type": "NetraNext Location Checkin Approval",
-                            "reference_name": approval_doc.name,
-                            "allocated_to": user,
-                            "status": "Open"
-                        })
-                        todo.insert(ignore_permissions=True)
-                    except Exception as todo_err:
-                        tenant_bench_logger.warning(f"Could not create ToDo for {user}: {str(todo_err)}", "ATTENDANCE_SYNC")
             except Exception as approval_err:
                 tenant_bench_logger.error(f"Failed to create Location Checkin Approval: {str(approval_err)}", "ATTENDANCE_SYNC")
 

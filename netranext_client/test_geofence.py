@@ -159,16 +159,6 @@ def execute():
         print(f"Found Approval Request: {approval_req.name} with status {approval_req.status} (Expected: Pending)")
         assert approval_req.status == "Pending", "Test B Failed: status should be Pending"
         
-        # Verify ToDos were created for Supervisor/HR
-        todos = frappe.get_all("ToDo", filters={
-            "reference_type": "NetraNext Location Checkin Approval",
-            "reference_name": approval_req.name,
-            "status": "Open"
-        }, fields=["name", "allocated_to"])
-        
-        print(f"Found {len(todos)} open ToDos assigned to: {[t.allocated_to for t in todos]}")
-        assert len(todos) > 0, "Test B Failed: No ToDos created"
-        
         # 7. TEST CASE C: Approve the request and verify
         print(f"\n--- Running Test Case C: Approving Request {approval_req.name} ---")
         
@@ -185,15 +175,6 @@ def execute():
         
         assert checkin_doc.skip_auto_attendance == 0, "Test C Failed: skip_auto_attendance should update to 0"
         assert checkin_doc.custom_location_status == "Approved", "Test C Failed: custom_location_status should update to Approved"
-        
-        # Verify ToDos are closed
-        closed_todos = frappe.get_all("ToDo", filters={
-            "reference_type": "NetraNext Location Checkin Approval",
-            "reference_name": approval_req.name,
-            "status": "Open"
-        })
-        print(f"Open ToDos remaining: {len(closed_todos)} (Expected: 0)")
-        assert len(closed_todos) == 0, "Test C Failed: ToDos were not closed"
         
         print("SUCCESS: Test Case B and C passed!")
     else:
