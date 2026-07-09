@@ -367,6 +367,11 @@ custom_fields = {
 }
 
 
+after_migrate = [
+    "netranext_client.netranext.patches.register_pages.execute"
+]
+
+
 # CORS Configuration for Central Server Access
 # --------------------------------------------
 allow_cors_requests = [

@@ -496,13 +496,13 @@ function render_journey_table(journeys) {
                 <div style="color: #1a202c; font-size: 16px; font-weight: 600; margin-bottom: 8px;">No Journey Records Found</div>
                 <div style="color: #718096; font-size: 14px; margin-bottom: 20px;">Journey records will appear here when employees track their GPS routes.</div>
                 <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
-                    <button onclick="frappe.set_route('List', 'NetraNext Journey')" style="padding: 10px 20px; background: #6366f1; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='#6366f1'">
+                    <button class="btn btn-primary btn-sm" onclick="frappe.set_route('List', 'NetraNext Journey')">
                         <i class="fa fa-plus" style="margin-right: 6px;"></i>Create Journey
                     </button>
-                    <button onclick="show_schedule_trip_dialog()" style="padding: 10px 20px; background: #a855f7; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#9333ea'" onmouseout="this.style.background='#a855f7'">
+                    <button class="btn btn-default btn-sm" onclick="show_schedule_trip_dialog()">
                         <i class="fa fa-calendar" style="margin-right: 6px;"></i>Schedule Trip
                     </button>
-                    <button onclick="frappe.set_route('netranext-mapview')" style="padding: 10px 20px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
+                    <button class="btn btn-default btn-sm" onclick="frappe.set_route('netranext-mapview')">
                         <i class="fa fa-map" style="margin-right: 6px;"></i>View Map
                     </button>
                 </div>
@@ -627,10 +627,10 @@ function render_attendance_table(attendance) {
                 <div style="color: #1a202c; font-size: 16px; font-weight: 600; margin-bottom: 8px;">No Attendance Records Found</div>
                 <div style="color: #718096; font-size: 14px; margin-bottom: 20px;">Attendance records will appear here when employees mark their attendance.</div>
                 <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
-                    <button onclick="frappe.set_route('List', 'Employee Checkin')" style="padding: 10px 20px; background: #6366f1; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='#6366f1'">
+                    <button class="btn btn-primary btn-sm" onclick="frappe.set_route('List', 'Employee Checkin')">
                         <i class="fa fa-plus" style="margin-right: 6px;"></i>Mark Attendance
                     </button>
-                    <button onclick="frappe.set_route('List', 'NetraNext Face Registration Request')" style="padding: 10px 20px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
+                    <button class="btn btn-default btn-sm" onclick="frappe.set_route('List', 'NetraNext Face Registration Request')">
                         <i class="fa fa-user" style="margin-right: 6px;"></i>Face Registration Requests
                     </button>
                 </div>

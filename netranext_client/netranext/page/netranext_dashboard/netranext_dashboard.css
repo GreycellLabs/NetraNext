@@ -2,7 +2,7 @@
 
 .netranext-dashboard {
     padding: 20px 0;
-    background: #ffffff;
+    background: var(--bg-color, #ffffff);
     min-height: 80vh;
 }
 
@@ -15,11 +15,11 @@
 }
 
 .stat-card-premium {
-    background: #ffffff;
-    border: 1px solid #f1f5f9;
-    border-radius: 12px;
+    background: var(--card-bg, #ffffff);
+    border: 1px solid var(--border-color, #ebf0f5);
+    border-radius: var(--border-radius-md, 8px);
     padding: 16px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--card-shadow, 0 1px 3px rgba(0, 0, 0, 0.05));
     transition: all 0.2s ease;
     display: flex;
     flex-direction: column;
@@ -31,7 +31,8 @@
 
 .stat-card-premium:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-color: var(--text-muted, #718096);
+    box-shadow: var(--shadow-sm, 0 4px 12px rgba(0, 0, 0, 0.08));
 }
 
 .stat-card-header {
@@ -41,17 +42,17 @@
 }
 
 .stat-label {
-    color: #64748b;
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 0.1em;
+    color: var(--text-muted, #64748b);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
 }
 
 .stat-value-large {
-    color: #0f172a;
+    color: var(--text-color, #0f172a);
     font-size: 28px;
-    font-weight: 800;
+    font-weight: 700;
     margin-top: 8px;
     letter-spacing: -0.01em;
 }
@@ -284,25 +285,24 @@
 
 /* Employee Select Dropdown */
 .employee-select {
-    padding: 8px 12px;
-    border: 2px solid #e2e8f0;
-    border-radius: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--border-color, #d1d8e0);
+    border-radius: var(--border-radius-sm, 4px);
     font-size: 13px;
-    color: #4a5568;
-    background: #fff;
+    color: var(--text-color, #4a5568);
+    background: var(--control-bg, #fff);
     cursor: pointer;
     transition: all 0.2s;
     min-width: 150px;
 }
 
 .employee-select:hover {
-    border-color: #667eea;
+    border-color: var(--text-muted, #64748b);
 }
 
 .employee-select:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: var(--primary-color, #5e64ff);
 }
 
 /* Date Filters */
@@ -314,32 +314,31 @@
 }
 
 .date-input {
-    padding: 8px 12px;
-    border: 2px solid #e2e8f0;
-    border-radius: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--border-color, #d1d8e0);
+    border-radius: var(--border-radius-sm, 4px);
     font-size: 13px;
-    color: #4a5568;
-    background: #fff;
+    color: var(--text-color, #4a5568);
+    background: var(--control-bg, #fff);
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .date-input:hover {
-    border-color: #667eea;
+    border-color: var(--text-muted, #64748b);
 }
 
 .date-input:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: var(--primary-color, #5e64ff);
 }
 
 .clear-date-btn {
-    padding: 8px 16px;
-    border: 2px solid #e2e8f0;
-    background: #fff;
-    color: #e53e3e;
-    border-radius: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--border-color, #d1d8e0);
+    background: var(--control-bg, #fff);
+    color: var(--text-color, #e53e3e);
+    border-radius: var(--border-radius-sm, 4px);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;

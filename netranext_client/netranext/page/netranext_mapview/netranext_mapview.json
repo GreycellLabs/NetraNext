@@ -10,6 +10,7 @@
  "name": "netranext-mapview",
  "owner": "Administrator",
  "page_name": "netranext-mapview",
+ "title": "Journey Map",
  "roles": [
   {
    "role": "System Manager"

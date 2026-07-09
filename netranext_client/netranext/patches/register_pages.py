@@ -11,22 +11,20 @@ def execute():
             "doctype": "Page",
             "name": "netranext-dashboard",
             "page_name": "netranext-dashboard",
-            "module": "netranext_client",
+            "module": "NetraNext",
             "standard": "Yes",
             "system_page": 1,
             "title": "NetraNext Dashboard",
-            "route": "/app/netranext-dashboard",
             "icon": "fa-dashboard"
         },
         {
             "doctype": "Page",
             "name": "netranext-mapview",
             "page_name": "netranext-mapview",
-            "module": "netranext_client",
+            "module": "NetraNext",
             "standard": "Yes",
             "system_page": 1,
             "title": "Journey Map",
-            "route": "/app/netranext-mapview",
             "icon": "fa-map"
         }
     ]
@@ -43,7 +41,9 @@ def execute():
             frappe.db.set_value("Page", page_name, {
                 "system_page": 1,
                 "standard": "Yes",
-                "module": "netranext_client"
+                "module": "NetraNext",
+                "title": page_data["title"],
+                "icon": page_data["icon"]
             })
 
             # Get the page doc

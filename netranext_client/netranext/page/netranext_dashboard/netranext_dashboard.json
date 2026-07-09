@@ -10,6 +10,7 @@
  "name": "netranext-dashboard",
  "owner": "Administrator",
  "page_name": "netranext-dashboard",
+ "title": "NetraNext Dashboard",
  "roles": [
   {
    "role": "System Manager"
