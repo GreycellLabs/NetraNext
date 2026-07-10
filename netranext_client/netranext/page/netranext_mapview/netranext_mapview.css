@@ -79,7 +79,7 @@
 
 .journey-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     border-color: var(--j-primary);
 }
 
@@ -200,7 +200,7 @@
 /* Marker Icons */
 .custom-map-marker {
     transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.15));
 }
 
 .custom-map-marker:hover {
@@ -267,13 +267,20 @@
 
 .leaflet-popup-content-wrapper {
     border-radius: 12px;
-    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
 }
 
 /* Animations */
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .journey-card {
@@ -291,6 +298,7 @@
     .map-view-body {
         flex-direction: column-reverse;
     }
+
     .journey-sidebar {
         width: 100%;
         height: 40%;
