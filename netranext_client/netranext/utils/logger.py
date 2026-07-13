@@ -29,14 +29,13 @@ class TenantBenchLogger:
         formatted_message = f"{module_prefix}{message} at {timestamp}"
 
         if level == "INFO":
-            frappe.log_error(title="TenantBench-INFO", message=formatted_message)
+            frappe.logger().info(formatted_message)
         elif level == "WARNING":
-            frappe.log_error(title="TenantBench-WARNING", message=formatted_message)
+            frappe.logger().warning(formatted_message)
         elif level == "ERROR":
             frappe.log_error(title="TenantBench-ERROR", message=formatted_message)
         elif level == "DEBUG":
-            if frappe.conf.get("developer_mode"):
-                frappe.log_error(title="TenantBench-DEBUG", message=formatted_message)
+            frappe.logger().debug(formatted_message)
 
     @staticmethod
     def info(message: str, module: Optional[str] = None):
