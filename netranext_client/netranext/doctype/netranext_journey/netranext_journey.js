@@ -2,8 +2,16 @@
 
 frappe.ui.form.on('NetraNext Journey', {
     refresh: function(frm) {
-        // Add a custom button to view this journey on the map if it's completed
-        if (frm.doc.status === 'Completed') {
+        // Add custom buttons depending on trip status
+        if (frm.doc.status === 'In Progress') {
+            frm.add_custom_button(__('Live Tracking'), function() {
+                frappe.route_options = {
+                    trip_id: frm.doc.name,
+                    employee: frm.doc.employee
+                };
+                frappe.set_route('netranext-live-tracking');
+            });
+        } else if (frm.doc.status === 'Completed') {
             frm.add_custom_button(__('View on Map'), function() {
                 // Determine the correct date format
                 var journeyDate = null;
@@ -17,13 +25,13 @@ frappe.ui.form.on('NetraNext Journey', {
 
                 // Set route options for the map view
                 frappe.route_options = {
-                    journey_id: frm.doc.name,
+                    trip_id: frm.doc.name,
                     employee: frm.doc.employee,
                     date: journeyDate
                 };
 
-                // Navigate to the map view
-                frappe.set_route('netranext-mapview');
+                // Navigate to the trip history page
+                frappe.set_route('netranext-trip-history');
             });
         }
     }

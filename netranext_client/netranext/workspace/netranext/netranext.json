@@ -24,15 +24,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Operations",
-   "link_count": 0,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Dashboard",
    "link_count": 0,
    "link_to": "netranext-dashboard",
@@ -43,9 +34,9 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Dashboard",
+   "label": "Live Tracking",
    "link_count": 0,
-   "link_to": "netranext-dashboard",
+   "link_to": "netranext-live-tracking",
    "link_type": "Page",
    "onboard": 0,
    "type": "Link"
@@ -53,30 +44,10 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Live Tracking Map",
+   "label": "Trip History",
    "link_count": 0,
-   "link_to": "netranext-mapview",
+   "link_to": "netranext-trip-history",
    "link_type": "Page",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Live Tracking Map",
-   "link_count": 0,
-   "link_to": "netranext-mapview",
-   "link_type": "Page",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Scheduled Trips",
-   "link_count": 0,
-   "link_to": "Scheduled Trip",
-   "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
   },
@@ -103,25 +74,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Checkin Approvals",
-   "link_count": 0,
-   "link_to": "NetraNext Location Checkin Approval",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Configuration",
-   "link_count": 0,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Configuration",
    "link_count": 0,
    "link_type": "DocType",
@@ -134,26 +86,6 @@
    "label": "Settings",
    "link_count": 0,
    "link_to": "NetraNext Settings",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Settings",
-   "link_count": 0,
-   "link_to": "NetraNext Settings",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Locations & Geofences",
-   "link_count": 0,
-   "link_to": "NetraNext Location",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -181,16 +113,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Employee Location Assignments",
-   "link_count": 0,
-   "link_to": "NetraNext Employee Location",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Data & Logs",
    "link_count": 0,
    "link_type": "DocType",
@@ -200,26 +122,7 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Data & Logs",
-   "link_count": 0,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Employee Journeys",
-   "link_count": 0,
-   "link_to": "NetraNext Journey",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Employee Journeys",
+   "label": "Employee Trips",
    "link_count": 0,
    "link_to": "NetraNext Journey",
    "link_type": "DocType",
@@ -232,26 +135,6 @@
    "label": "Face Registrations",
    "link_count": 0,
    "link_to": "NetraNext Face Registration Request",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Face Registrations",
-   "link_count": 0,
-   "link_to": "NetraNext Face Registration Request",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Device Sync Logs",
-   "link_count": 0,
-   "link_to": "NetraNext Sync Log",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -267,7 +150,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-07-10 17:12:05.808457",
+ "modified": "2026-07-20 10:25:00.000000",
  "modified_by": "Administrator",
  "module": "NetraNext",
  "name": "NetraNext",
@@ -287,22 +170,6 @@
    "type": "DocType"
   },
   {
-   "color": "Grey",
-   "doc_view": "",
-   "icon": "gear",
-   "label": "Settings",
-   "link_to": "NetraNext Settings",
-   "type": "DocType"
-  },
-  {
-   "color": "Blue",
-   "doc_view": "",
-   "icon": "chart-pie",
-   "label": "Dashboard",
-   "link_to": "netranext-dashboard",
-   "type": "Page"
-  },
-  {
    "color": "Blue",
    "doc_view": "",
    "icon": "chart-pie",
@@ -315,24 +182,16 @@
    "doc_view": "",
    "icon": "map",
    "label": "Live Tracking",
-   "link_to": "netranext-mapview",
+   "link_to": "netranext-live-tracking",
    "type": "Page"
   },
   {
-   "color": "Green",
+   "color": "Orange",
    "doc_view": "",
-   "icon": "map",
-   "label": "Live Tracking",
-   "link_to": "netranext-mapview",
+   "icon": "time",
+   "label": "Trip History",
+   "link_to": "netranext-trip-history",
    "type": "Page"
-  },
-  {
-   "color": "Yellow",
-   "doc_view": "",
-   "icon": "check",
-   "label": "Approvals",
-   "link_to": "NetraNext Location Checkin Approval",
-   "type": "DocType"
   },
   {
    "color": "Yellow",

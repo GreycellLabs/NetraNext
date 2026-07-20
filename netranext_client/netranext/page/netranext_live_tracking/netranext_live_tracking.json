@@ -1,16 +1,16 @@
 {
  "content": null,
- "creation": "2026-05-18 16:15:15.550706",
+ "creation": "2026-07-20 10:25:00.000000",
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-05-19 18:09:19.331525",
+ "modified": "2026-07-20 10:25:00.000000",
  "modified_by": "Administrator",
  "module": "NetraNext",
- "name": "netranext-mapview",
+ "name": "netranext-live-tracking",
  "owner": "Administrator",
- "page_name": "netranext-mapview",
- "title": "Journey Map",
+ "page_name": "netranext-live-tracking",
+ "title": "Live Tracking",
  "roles": [
   {
    "role": "System Manager"
@@ -22,8 +22,8 @@
    "role": "HR User"
   }
  ],
- "script": "netranext_mapview.js",
+ "script": "netranext_live_tracking.js",
  "standard": "Yes",
- "style": "netranext_mapview.css",
+ "style": "netranext_live_tracking.css",
  "system_page": 1
 }

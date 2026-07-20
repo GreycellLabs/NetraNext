@@ -5,6 +5,11 @@ def execute():
     Patch to register NetraNext custom pages in the database
     This ensures the pages show up in the Page list and are accessible
     """
+    # Delete the old netranext-mapview page if it exists
+    if frappe.db.exists("Page", "netranext-mapview"):
+        frappe.delete_doc("Page", "netranext-mapview", ignore_permissions=True)
+        frappe.db.commit()
+
     # Define NetraNext pages
     netranext_pages = [
         {
@@ -19,13 +24,23 @@ def execute():
         },
         {
             "doctype": "Page",
-            "name": "netranext-mapview",
-            "page_name": "netranext-mapview",
+            "name": "netranext-live-tracking",
+            "page_name": "netranext-live-tracking",
             "module": "NetraNext",
             "standard": "Yes",
             "system_page": 1,
-            "title": "Journey Map",
-            "icon": "fa-map"
+            "title": "Live Tracking",
+            "icon": "fa-map-marker"
+        },
+        {
+            "doctype": "Page",
+            "name": "netranext-trip-history",
+            "page_name": "netranext-trip-history",
+            "module": "NetraNext",
+            "standard": "Yes",
+            "system_page": 1,
+            "title": "Trip History",
+            "icon": "fa-history"
         }
     ]
 

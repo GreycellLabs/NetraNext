@@ -2,7 +2,8 @@
 // This file helps register custom pages in Frappe
 
 frappe.pages['netranext-dashboard'].title = 'NetraNext Dashboard';
-frappe.pages['netranext-mapview'].title = 'Journey Map';
+frappe.pages['netranext-live-tracking'].title = 'Live Tracking';
+frappe.pages['netranext-trip-history'].title = 'Trip History';
 
 // Add pages to desk
 $(document).ready(function() {

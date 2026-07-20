@@ -93,8 +93,8 @@ frappe.pages['netranext-dashboard'].on_page_load = function (wrapper) {
 
             <div id="journey-table" class="section">
                 <div class="section-header">
-                    <h3 style="cursor: pointer; color: #1a202c;" onclick="frappe.set_route('netranext-mapview')" onmouseover="this.style.color='#6366f1'" onmouseout="this.style.color='#1a202c'">
-                        Journeys <i class="fa fa-map-o" style="font-size: 14px; margin-left: 4px; vertical-align: middle; opacity: 0.7;"></i>
+                    <h3 style="cursor: pointer; color: #1a202c;" onclick="frappe.set_route('netranext-trip-history')" onmouseover="this.style.color='#6366f1'" onmouseout="this.style.color='#1a202c'">
+                        Trips <i class="fa fa-map-o" style="font-size: 14px; margin-left: 4px; vertical-align: middle; opacity: 0.7;"></i>
                     </h3>
                     <div class="filter-controls">
                         <div class="right-filters">
@@ -405,8 +405,12 @@ function render_dashboard(data) {
 
     // Render Your Shortcuts - Column 2: Helpful Links
     var helpfulHTML = `
-        <div class="shortcut-item" onclick="frappe.set_route('netranext-mapview')">
-            <span class="shortcut-label">Journey Map</span>
+        <div class="shortcut-item" onclick="frappe.set_route('netranext-live-tracking')">
+            <span class="shortcut-label">Live Tracking</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
+        <div class="shortcut-item" onclick="frappe.set_route('netranext-trip-history')">
+            <span class="shortcut-label">Trip History</span>
             <span class="shortcut-arrow">↗</span>
         </div>
         <div class="shortcut-item" onclick="frappe.set_route('List', 'Employee Checkin')">
@@ -418,7 +422,7 @@ function render_dashboard(data) {
             <span class="shortcut-arrow">↗</span>
         </div>
         <div class="shortcut-item" onclick="frappe.set_route('List', 'NetraNext Journey')">
-            <span class="shortcut-label">All Journeys</span>
+            <span class="shortcut-label">Employee Trips</span>
             <span class="shortcut-arrow">↗</span>
         </div>
         <div class="shortcut-item" onclick="show_schedule_trip_dialog()">
@@ -464,7 +468,7 @@ function render_journey_table(journeys) {
             var distance = j.distance_km ? `${j.distance_km} km` : '-';
 
             html += `
-                <div class="list-item-container" onclick="frappe.set_route('netranext-mapview', { journey_id: '${journeyId}' })" style="cursor: pointer; align-items: flex-start; padding: 14px 18px;">
+                <div class="list-item-container" onclick="frappe.set_route('netranext-trip-history', { trip_id: '${journeyId}' })" style="cursor: pointer; align-items: flex-start; padding: 14px 18px;">
                     <div style="flex: 1.2; padding-right: 15px;">
                         <span style="color: #6366f1; font-weight: 700; display: block; font-size: 14.5px;">${journeyId}</span>
                         <span style="font-size: 13px; color: #4a5568; margin-top: 2px; display: block;">${empName}</span>
@@ -493,16 +497,16 @@ function render_journey_table(journeys) {
                 <div style="font-size: 48px; margin-bottom: 20px; opacity: 0.3;">
                     <i class="fa fa-route" style="color: #6366f1;"></i>
                 </div>
-                <div style="color: #1a202c; font-size: 16px; font-weight: 600; margin-bottom: 8px;">No Journey Records Found</div>
-                <div style="color: #718096; font-size: 14px; margin-bottom: 20px;">Journey records will appear here when employees track their GPS routes.</div>
+                <div style="color: #1a202c; font-size: 16px; font-weight: 600; margin-bottom: 8px;">No Trip Records Found</div>
+                <div style="color: #718096; font-size: 14px; margin-bottom: 20px;">Trip records will appear here when employees track their GPS routes.</div>
                 <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
                     <button class="btn btn-primary btn-sm" onclick="frappe.set_route('List', 'NetraNext Journey')">
-                        <i class="fa fa-plus" style="margin-right: 6px;"></i>Create Journey
+                        <i class="fa fa-plus" style="margin-right: 6px;"></i>Create Trip
                     </button>
                     <button class="btn btn-default btn-sm" onclick="show_schedule_trip_dialog()">
                         <i class="fa fa-calendar" style="margin-right: 6px;"></i>Schedule Trip
                     </button>
-                    <button class="btn btn-default btn-sm" onclick="frappe.set_route('netranext-mapview')">
+                    <button class="btn btn-default btn-sm" onclick="frappe.set_route('netranext-trip-history')">
                         <i class="fa fa-map" style="margin-right: 6px;"></i>View Map
                     </button>
                 </div>
