@@ -246,14 +246,7 @@ frappe.pages['netranext-trip-history'].on_page_show = function (wrapper) {
             window.mapViewData.map.invalidateSize();
         }, 300);
     }
-<<<<<<< HEAD:netranext_client/netranext/page/netranext_mapview/netranext_mapview.js
-    if (window.mapViewData && window.mapViewData.journeys.length > 0) {
-        apply_route_options();
-        setup_live_tracking_timer();
-    }
-=======
     apply_route_options();
->>>>>>> 3dec311 (refactor: replace mapview with dedicated live tracking and trip history pages):netranext_client/netranext/page/netranext_trip_history/netranext_trip_history.js
 };
 
 function get_today_date() {
@@ -314,74 +307,9 @@ function load_trip_data() {
     });
 }
 
-<<<<<<< HEAD:netranext_client/netranext/page/netranext_mapview/netranext_mapview.js
-// Setup live tracking auto-refresh timer if any active journeys exist
-function setup_live_tracking_timer() {
-    if (window.mapViewData.liveTrackingInterval) {
-        clearInterval(window.mapViewData.liveTrackingInterval);
-        window.mapViewData.liveTrackingInterval = null;
-    }
-
-    if (!$('#journey-map').length) {
-        return;
-    }
-
-    var hasActive = window.mapViewData.journeys.some(function(j) {
-        return j.status === 'In Progress';
-    });
-
-    if (hasActive) {
-        console.log("Active journeys found, starting live tracking auto-refresh...");
-        window.mapViewData.liveTrackingInterval = setInterval(function() {
-            if (!$('#journey-map').length) {
-                clearInterval(window.mapViewData.liveTrackingInterval);
-                window.mapViewData.liveTrackingInterval = null;
-                return;
-            }
-            console.log("Auto-refreshing live vehicle positions...");
-            load_journey_data_quietly();
-        }, 30000); // refresh every 30 seconds
-    }
-}
-
-// Quietly fetch journey data in the background and update elements
-function load_journey_data_quietly() {
-    var dateFrom = window.currentFilters.date || get_today_date();
-    var dateTo = dateFrom;
-
-    frappe.call({
-        method: "netranext_client.netranext.apis.v1.dashboard.get_dashboard_data",
-        args: {
-            date_from: dateFrom,
-            date_to: dateTo
-        },
-        callback: function(response) {
-            if (response.message && response.message.status === 'success') {
-                var data = response.message.data || {};
-                var journeys = data.journeys || [];
-
-                journeys.forEach(function(journey) {
-                    journey.coordinates = generate_journey_coordinates(journey);
-                });
-
-                window.mapViewData.journeys = journeys;
-                update_view();
-                setup_live_tracking_timer();
-            }
-        }
-    });
-}
-
-// Generate coordinates for journey display
-function generate_journey_coordinates(journey) {
-    // If journey has actual coordinates, use them
-    if (journey.raw_coordinates && journey.raw_coordinates.length > 0) {
-        return journey.raw_coordinates.map(function(coord) {
-=======
 function generate_trip_coordinates(trip) {
     if (trip.raw_coordinates && trip.raw_coordinates.length > 0) {
         return trip.raw_coordinates.map(function(coord) {
->>>>>>> 3dec311 (refactor: replace mapview with dedicated live tracking and trip history pages):netranext_client/netranext/page/netranext_trip_history/netranext_trip_history.js
             return [coord.latitude || coord.lat, coord.longitude || coord.lng];
         });
     }
@@ -567,24 +495,13 @@ function render_trips_on_map() {
 
         window.mapViewData.layers[id] = polyline;
 
-<<<<<<< HEAD:netranext_client/netranext/page/netranext_mapview/netranext_mapview.js
-        // Markers
-        var endMarkerType = j.status === 'In Progress' ? 'live' : 'end';
-
-=======
->>>>>>> 3dec311 (refactor: replace mapview with dedicated live tracking and trip history pages):netranext_client/netranext/page/netranext_trip_history/netranext_trip_history.js
         var startMarker = L.marker(coords[0], { icon: create_marker_icon('start', color) })
             .addTo(window.mapViewData.map);
-        var endMarker = L.marker(coords[coords.length - 1], { icon: create_marker_icon(endMarkerType, color) })
+        var endMarker = L.marker(coords[coords.length - 1], { icon: create_marker_icon('end', color) })
             .addTo(window.mapViewData.map);
 
-<<<<<<< HEAD:netranext_client/netranext/page/netranext_mapview/netranext_mapview.js
-        startMarker.bindPopup(create_journey_popup(j, 'start'));
-        endMarker.bindPopup(create_journey_popup(j, endMarkerType));
-=======
         startMarker.bindPopup(create_trip_popup(t, 'start'));
         endMarker.bindPopup(create_trip_popup(t, 'end'));
->>>>>>> 3dec311 (refactor: replace mapview with dedicated live tracking and trip history pages):netranext_client/netranext/page/netranext_trip_history/netranext_trip_history.js
 
         var tripMarkers = [startMarker, endMarker];
 
@@ -624,54 +541,27 @@ function create_marker_icon(type, color) {
         iconColor = '#10b981'; // Green for start
     } else if (type === 'extended') {
         iconColor = '#fbbf24'; // Yellow for extended
-    } else if (type === 'live') {
-        iconColor = '#3b82f6'; // Blue for live
     }
-    
-    var svg = '';
-    if (type === 'live') {
-        svg = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-            '<circle cx="12" cy="12" r="10" fill="#3b82f6" fill-opacity="0.2"/>' +
-            '<circle cx="12" cy="12" r="6" fill="#3b82f6" fill-opacity="0.4"/>' +
-            '<path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="#1e40af" transform="scale(0.8) translate(3, 3)"/>' +
-            '</svg>';
-    } else {
-        svg = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-            '<path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="' + iconColor + '"/>' +
-            '<circle cx="12" cy="9" r="3" fill="white"/>' +
-            '</svg>';
-    }
-<<<<<<< HEAD:netranext_client/netranext/page/netranext_mapview/netranext_mapview.js
-=======
     
     var svg = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
         '<path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="' + iconColor + '"/>' +
         '<circle cx="12" cy="9" r="3" fill="white"/>' +
         '</svg>';
->>>>>>> 3dec311 (refactor: replace mapview with dedicated live tracking and trip history pages):netranext_client/netranext/page/netranext_trip_history/netranext_trip_history.js
 
     return L.divIcon({
         html: svg,
-        className: type === 'live' ? 'custom-map-marker live-marker-pulse' : 'custom-map-marker',
-        iconSize: type === 'live' ? [40, 40] : [32, 32],
-        iconAnchor: type === 'live' ? [20, 20] : [16, 32],
-        popupAnchor: type === 'live' ? [0, -20] : [0, -32]
+        className: 'custom-map-marker',
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        popupAnchor: [0, -32]
     });
 }
 
-<<<<<<< HEAD:netranext_client/netranext/page/netranext_mapview/netranext_mapview.js
-function create_journey_popup(j, type, coord) {
-    var title = type === 'start' ? 'Trip Start' : (type === 'extended' ? 'Trip Extended' : (type === 'live' ? 'Current Position (Live)' : 'Trip End'));
-    var accentColor = type === 'start' ? '#10b981' : (type === 'extended' ? '#fbbf24' : (type === 'live' ? '#3b82f6' : '#ef4444'));
-    var timeStr = type === 'start' ? j.start_time : (type === 'extended' ? (coord ? coord.timestamp : '') : (type === 'live' ? (j.raw_coordinates && j.raw_coordinates.length ? j.raw_coordinates[j.raw_coordinates.length - 1].timestamp : '') : j.end_time));
-    var locationStr = type === 'start' ? (j.start_location || 'Start point') : (type === 'extended' ? (coord ? (coord.latitude + ', ' + coord.longitude) : 'Extended point') : (type === 'live' ? (j.raw_coordinates && j.raw_coordinates.length ? (j.raw_coordinates[j.raw_coordinates.length - 1].latitude + ', ' + j.raw_coordinates[j.raw_coordinates.length - 1].longitude) : 'Live point') : (j.end_location || 'End point')));
-=======
 function create_trip_popup(t, type, coord) {
     var title = type === 'start' ? 'Trip Start' : (type === 'extended' ? 'Trip Extended' : 'Trip End');
     var accentColor = type === 'start' ? '#10b981' : (type === 'extended' ? '#fbbf24' : '#ef4444');
     var timeStr = type === 'start' ? t.start_time : (type === 'extended' ? (coord ? coord.timestamp : '') : t.end_time);
     var locationStr = type === 'start' ? (t.start_location || 'Start point') : (type === 'extended' ? (coord ? (coord.latitude + ', ' + coord.longitude) : 'Extended point') : (t.end_location || 'End point'));
->>>>>>> 3dec311 (refactor: replace mapview with dedicated live tracking and trip history pages):netranext_client/netranext/page/netranext_trip_history/netranext_trip_history.js
     var displayLocation = format_location_display(locationStr);
 
     return '<div class="rich-popup">' +
@@ -837,23 +727,11 @@ function render_trip_list() {
         var startLoc = t.start_location || 'Start point';
         var endLoc = t.end_location || 'End point';
 
-<<<<<<< HEAD:netranext_client/netranext/page/netranext_mapview/netranext_mapview.js
-        var isLive = j.status === 'In Progress';
-        var statusBadge = isLive ? '<span class="live-status-indicator">● LIVE</span>' : '';
-        var endTimeDisplay = isLive ? 'Live' : format_time_12hr(j.end_time);
-
-        var card = $('<div class="journey-card' + (isSelected ? ' selected' : '') + '" data-id="' + id + '">' +
-            '<div class="journey-card-header" style="align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 4px;">' +
-            '<div class="journey-card-emp" style="display: flex; align-items: center; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (j.employee_name || j.employee) + statusBadge + '</div>' +
-            '<div style="font-size: 12px; color: var(--j-text-muted); margin: 0 12px; font-weight: 500;">' +
-            format_time_12hr(j.start_time) + ' - ' + endTimeDisplay +
-=======
         var card = $('<div class="trip-card' + (isSelected ? ' selected' : '') + '" data-id="' + id + '">' +
             '<div class="trip-card-header" style="align-items: center; margin-bottom: 8px;">' +
             '<div class="trip-card-emp" style="flex: 1;">' + (t.employee_name || t.employee) + '</div>' +
             '<div style="font-size: 12px; color: var(--t-text-muted); margin: 0 12px; font-weight: 500;">' +
             format_time_12hr(t.start_time) + ' - ' + format_time_12hr(t.end_time) +
->>>>>>> 3dec311 (refactor: replace mapview with dedicated live tracking and trip history pages):netranext_client/netranext/page/netranext_trip_history/netranext_trip_history.js
             '</div>' +
             '<div class="trip-card-dist" style="margin-left: auto;">' + (t.distance_km || 0) + ' km</div>' +
             '</div>' +
