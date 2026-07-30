@@ -18,6 +18,7 @@
     };
 
     var liveTrackingInterval = null;
+    var pageWrapper = null;
 
     // Helper function to format time to 12-hour (AM/PM) in local timezone
     function format_time_12hr(timeStr) {
@@ -149,6 +150,7 @@
     }
 
     frappe.pages['netranext-live-tracking'].on_page_load = function (wrapper) {
+        pageWrapper = $(wrapper);
         var page = frappe.ui.make_app_page({
             parent: wrapper,
             title: 'Live Tracking',
@@ -192,7 +194,7 @@
 
                     <!-- Map -->
                     <div class="map-content">
-                        <div id="trip-map"></div>
+                        <div id="live-tracking-map"></div>
 
                         <!-- Map Overlays -->
                         <div class="map-overlay-controls">
@@ -233,6 +235,7 @@
     };
 
     frappe.pages['netranext-live-tracking'].on_page_show = function (wrapper) {
+        pageWrapper = $(wrapper);
         if (!mapViewData || !mapViewData.map) {
             // Load Leaflet library and initialize map when container is attached and visible in DOM
             load_leaflet_library(function() {
@@ -257,7 +260,9 @@
                 }
             }, 300);
 
-            load_trip_data(true);
+            // Clean previous selection and refresh cleanly
+            mapViewData.selectedId = null;
+            load_trip_data(false);
             start_polling(wrapper);
         }
     };
@@ -293,7 +298,7 @@
     // Load real active trip data from API
     function load_trip_data(silent) {
         if (!silent) {
-            $('#trip-list-content').html( /* nosemgrep */ `
+            pageWrapper.find('#trip-list-content').html( /* nosemgrep */ `
                 <div style="text-align: center; padding: 20px;">
                     <div class="loader-spinner" style="margin: 0 auto 16px;"></div>
                     <div style="color: var(--t-text-muted);">Loading active trips...</div>
@@ -408,11 +413,11 @@
                 return sum + (parseFloat(t.distance_km) || 0);
             }, 0);
 
-            $('#total-dist').text(totalKm.toFixed(2) + " km");
-            $('#total-count').text(trips.length + " active trips");
-            $('#view-stats').fadeIn();
+            pageWrapper.find('#total-dist').text(totalKm.toFixed(2) + " km");
+            pageWrapper.find('#total-count').text(trips.length + " active trips");
+            pageWrapper.find('#view-stats').fadeIn();
         } else {
-            $('#view-stats').fadeOut();
+            pageWrapper.find('#view-stats').fadeOut();
         }
     }
 
@@ -423,7 +428,7 @@
             '<p style="color: #718096; margin-bottom: 16px;">' + message + '</p>' +
             '</div>';
 
-        $('#trip-list-content').html( /* nosemgrep */ errorHtml);
+        pageWrapper.find('#trip-list-content').html( /* nosemgrep */ errorHtml);
     }
 
     function populate_employee_filter() {
@@ -435,7 +440,7 @@
             }
         });
 
-        var select = $('#employee-filter');
+        var select = pageWrapper.find('#employee-filter');
         var currentVal = select.val();
         select.find('option:not(:first)').remove();
 
@@ -448,9 +453,10 @@
         }
     }
 
+    // Initialize map on live-tracking-map container
     function initialize_map() {
         if (typeof L === 'undefined') {
-            $('#trip-map').html( /* nosemgrep */ 
+            pageWrapper.find('#live-tracking-map').html( /* nosemgrep */ 
                 '<div style="text-align: center; padding: 40px; color: #8d99a6;">' +
                 '<h3>Map Not Available</h3>' +
                 '</div>'
@@ -459,8 +465,8 @@
         }
 
         try {
-            // Default to Bangalore coordinates
-            mapViewData.map = L.map('trip-map').setView([12.9716, 77.5946], 12);
+            var mapEl = pageWrapper.find('#live-tracking-map')[0];
+            mapViewData.map = L.map(mapEl).setView([12.9716, 77.5946], 12);
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors',
@@ -653,15 +659,15 @@
                         var parts = data.display_name.split(',');
                         var shortAddr = parts.slice(0, Math.min(3, parts.length)).join(',').trim();
                         mapViewData.addressCache[cacheKey] = shortAddr;
-                        $('.' + classMarker).text(shortAddr);
+                        pageWrapper.find('.' + classMarker).text(shortAddr);
                     } else {
                         mapViewData.addressCache[cacheKey] = locationStr;
-                        $('.' + classMarker).text(locationStr);
+                        pageWrapper.find('.' + classMarker).text(locationStr);
                     }
                 })
                 .catch(err => {
                     mapViewData.addressCache[cacheKey] = locationStr;
-                    $('.' + classMarker).text(locationStr);
+                    pageWrapper.find('.' + classMarker).text(locationStr);
                 });
         }
         
@@ -669,18 +675,18 @@
     }
 
     function setup_event_handlers() {
-        $('#employee-filter').on('change', function() {
+        pageWrapper.find('#employee-filter').on('change', function() {
             currentFilters.employee = $(this).val();
             update_view();
         });
 
-        $('#clear-filters').on('click', function() {
-            $('#employee-filter').val('');
+        pageWrapper.find('#clear-filters').on('click', function() {
+            pageWrapper.find('#employee-filter').val('');
             currentFilters.employee = '';
             update_view();
         });
 
-        $('#fit-all-routes').on('click', function() {
+        pageWrapper.find('#fit-all-routes').on('click', function() {
             var allPoints = [];
             Object.values(mapViewData.layers).forEach(function(layer) {
                 layer.getLatLngs().forEach(function(p) {
@@ -692,7 +698,7 @@
             }
         });
 
-        $('#fit-selected').on('click', function() {
+        pageWrapper.find('#fit-selected').on('click', function() {
             if (mapViewData.selectedId) {
                 select_trip(mapViewData.selectedId, true);
             }
@@ -728,7 +734,7 @@
 
     function render_trip_list() {
         var trips = get_filtered_trips();
-        var container = $('#trip-list-content');
+        var container = pageWrapper.find('#trip-list-content');
         container.empty();
 
         if (trips.length === 0) {
@@ -783,10 +789,10 @@
     function select_trip(id, zoom) {
         mapViewData.selectedId = id;
 
-        $('.trip-card').removeClass('selected');
-        $('.trip-card[data-id="' + id + '"]').addClass('selected');
+        pageWrapper.find('.trip-card').removeClass('selected');
+        pageWrapper.find('.trip-card[data-id="' + id + '"]').addClass('selected');
 
-        var selectedCard = $('.trip-card[data-id="' + id + '"]');
+        var selectedCard = pageWrapper.find('.trip-card[data-id="' + id + '"]');
         if (selectedCard.length) {
             selectedCard[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }

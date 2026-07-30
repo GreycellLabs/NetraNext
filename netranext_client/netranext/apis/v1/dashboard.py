@@ -7,11 +7,17 @@ from datetime import datetime
 
 @frappe.whitelist(allow_guest=True)
 def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100,
-                     journey_page=1, journey_employee=None, attendance_page=1, attendance_employee=None):
+                     journey_page=1, journey_employee=None, attendance_page=1, attendance_employee=None,
+                     ignore_dates=None):
     """
     Fetch dashboard data from local database
     """
     try:
+        # Check if ignore_dates is passed
+        is_ignore_dates = False
+        if ignore_dates in (1, True, "1", "true", "True"):
+            is_ignore_dates = True
+
         # Set default date range (today) if not provided
         if not date_from:
             date_from = datetime.now().strftime('%Y-%m-%d')
@@ -62,18 +68,29 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
         journeys = []
         try:
             if frappe.db.exists("DocType", "NetraNext Journey"):
-                # Use frappe.db.sql instead of get_all to avoid syntax issues
-                journey_sql = """
-                    SELECT name, employee, start_time as journey_date, start_time, end_time,
-                           start_location, end_location, distance_km as total_distance, status,
-                           raw_gps_data
-                    FROM `tabNetraNext Journey`
-                    WHERE DATE(start_time) >= %s AND DATE(start_time) <= %s
-                    ORDER BY creation DESC
-                    LIMIT %s
-                """
-
-                journey_records = frappe.db.sql(journey_sql, (db_date_from, db_date_to, int(limit)), as_dict=True)
+                if is_ignore_dates:
+                    # Query all journeys without date filter
+                    journey_sql = """
+                        SELECT name, employee, start_time as journey_date, start_time, end_time,
+                               start_location, end_location, distance_km as total_distance, status,
+                               raw_gps_data
+                        FROM `tabNetraNext Journey`
+                        ORDER BY creation DESC
+                        LIMIT %s
+                    """
+                    journey_records = frappe.db.sql(journey_sql, (int(limit),), as_dict=True)
+                else:
+                    # Use frappe.db.sql instead of get_all to avoid syntax issues
+                    journey_sql = """
+                        SELECT name, employee, start_time as journey_date, start_time, end_time,
+                               start_location, end_location, distance_km as total_distance, status,
+                               raw_gps_data
+                        FROM `tabNetraNext Journey`
+                        WHERE DATE(start_time) >= %s AND DATE(start_time) <= %s
+                        ORDER BY creation DESC
+                        LIMIT %s
+                    """
+                    journey_records = frappe.db.sql(journey_sql, (db_date_from, db_date_to, int(limit)), as_dict=True)
                 
                 import json
                 for journey in journey_records:

@@ -15,8 +15,10 @@
 
     var currentFilters = {
         employee: '',
-        date: get_today_date()
+        date: ''
     };
+
+    var pageWrapper = null;
 
     // Helper function to format time to 12-hour (AM/PM) in local timezone
     function format_time_12hr(timeStr) {
@@ -148,6 +150,7 @@
     }
 
     frappe.pages['netranext-trip-history'].on_page_load = function (wrapper) {
+        pageWrapper = $(wrapper);
         var page = frappe.ui.make_app_page({
             parent: wrapper,
             title: 'Trip History',
@@ -196,7 +199,7 @@
 
                     <!-- Map -->
                     <div class="map-content">
-                        <div id="trip-map"></div>
+                        <div id="trip-history-map"></div>
 
                         <!-- Map Overlays -->
                         <div class="map-overlay-controls">
@@ -223,24 +226,9 @@
         mapViewData.markers = {};
 
         currentFilters.employee = '';
-        currentFilters.date = get_today_date();
+        currentFilters.date = ''; // Show all by default
 
-        // Load Leaflet library first, then initialize the page
-        load_leaflet_library(function() {
-            $('#date-filter').val(currentFilters.date).attr('max', currentFilters.date);
-
-            initialize_map();
-
-            setTimeout(function() {
-                if (mapViewData.map) {
-                    mapViewData.map.invalidateSize();
-                }
-            }, 500);
-
-            load_trip_data();
-
-            setup_event_handlers();
-        });
+        setup_event_handlers();
 
         $(wrapper).on('hide', function() {
             // Clean up any remaining references
@@ -248,12 +236,38 @@
     };
 
     frappe.pages['netranext-trip-history'].on_page_show = function (wrapper) {
-        if (mapViewData && mapViewData.map) {
+        pageWrapper = $(wrapper);
+        
+        // Reset selected ID on navigation display
+        mapViewData.selectedId = null;
+
+        // Set max attribute on date input so future dates cannot be selected
+        var todayVal = get_today_date();
+        pageWrapper.find('#date-filter').val(currentFilters.date).attr('max', todayVal);
+
+        if (!mapViewData || !mapViewData.map) {
+            load_leaflet_library(function() {
+                initialize_map();
+
+                setTimeout(function() {
+                    if (mapViewData.map) {
+                        mapViewData.map.invalidateSize();
+                    }
+                }, 500);
+
+                load_trip_data();
+                apply_route_options();
+            });
+        } else {
             setTimeout(function() {
-                mapViewData.map.invalidateSize();
+                if (mapViewData.map) {
+                    mapViewData.map.invalidateSize();
+                }
             }, 300);
+
+            load_trip_data();
+            apply_route_options();
         }
-        apply_route_options();
     };
 
     function get_today_date() {
@@ -266,21 +280,24 @@
 
     // Load static and open trip logs
     function load_trip_data() {
-        $('#trip-list-content').html( /* nosemgrep */ `
+        pageWrapper.find('#trip-list-content').html( /* nosemgrep */ `
             <div style="text-align: center; padding: 20px;">
                 <div class="loader-spinner" style="margin: 0 auto 16px;"></div>
                 <div style="color: var(--t-text-muted);">Loading trips...</div>
             </div>
         `);
 
-        var dateFrom = currentFilters.date || get_today_date();
+        var args = {};
+        if (currentFilters.date) {
+            args.date_from = currentFilters.date;
+            args.date_to = currentFilters.date;
+        } else {
+            args.ignore_dates = 1;
+        }
 
         frappe.call({
             method: "netranext_client.netranext.apis.v1.dashboard.get_dashboard_data",
-            args: {
-                date_from: dateFrom,
-                date_to: dateFrom
-            },
+            args: args,
             callback: function(response) {
                 if (response.message && response.message.status === 'success') {
                     var data = response.message.data || {};
@@ -299,7 +316,7 @@
 
                     apply_route_options();
                 } else {
-                    show_error_message('No recorded trips found for this date.');
+                    show_error_message(currentFilters.date ? 'No recorded trips found for this date.' : 'No recorded trips found.');
                 }
             },
             error: function(xhr, status, error) {
@@ -381,12 +398,12 @@
 
         if (targetEmp) {
             currentFilters.employee = targetEmp;
-            $('#employee-filter').val(targetEmp);
+            pageWrapper.find('#employee-filter').val(targetEmp);
         }
 
         if (targetDate) {
             currentFilters.date = targetDate;
-            $('#date-filter').val(targetDate);
+            pageWrapper.find('#date-filter').val(targetDate);
         }
 
         if (targetId) {
@@ -405,7 +422,7 @@
             '<p style="color: #718096; margin-bottom: 16px;">' + message + '</p>' +
             '</div>';
 
-        $('#trip-list-content').html( /* nosemgrep */ errorHtml);
+        pageWrapper.find('#trip-list-content').html( /* nosemgrep */ errorHtml);
     }
 
     function populate_employee_filter() {
@@ -417,7 +434,7 @@
             }
         });
 
-        var select = $('#employee-filter');
+        var select = pageWrapper.find('#employee-filter');
         var currentVal = select.val();
         select.find('option:not(:first)').remove();
 
@@ -430,9 +447,10 @@
         }
     }
 
+    // Initialize map on trip-history-map container
     function initialize_map() {
         if (typeof L === 'undefined') {
-            $('#trip-map').html( /* nosemgrep */ 
+            pageWrapper.find('#trip-history-map').html( /* nosemgrep */ 
                 '<div style="text-align: center; padding: 40px; color: #8d99a6;">' +
                 '<h3>Map Not Available</h3>' +
                 '</div>'
@@ -441,7 +459,8 @@
         }
 
         try {
-            mapViewData.map = L.map('trip-map').setView([12.9716, 77.5946], 12);
+            var mapEl = pageWrapper.find('#trip-history-map')[0];
+            mapViewData.map = L.map(mapEl).setView([12.9716, 77.5946], 12);
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors',
@@ -626,15 +645,15 @@
                         var parts = data.display_name.split(',');
                         var shortAddr = parts.slice(0, Math.min(3, parts.length)).join(',').trim();
                         mapViewData.addressCache[cacheKey] = shortAddr;
-                        $('.' + classMarker).text(shortAddr);
+                        pageWrapper.find('.' + classMarker).text(shortAddr);
                     } else {
                         mapViewData.addressCache[cacheKey] = locationStr;
-                        $('.' + classMarker).text(locationStr);
+                        pageWrapper.find('.' + classMarker).text(locationStr);
                     }
                 })
                 .catch(err => {
                     mapViewData.addressCache[cacheKey] = locationStr;
-                    $('.' + classMarker).text(locationStr);
+                    pageWrapper.find('.' + classMarker).text(locationStr);
                 });
         }
         
@@ -642,25 +661,25 @@
     }
 
     function setup_event_handlers() {
-        $('#employee-filter').on('change', function() {
+        pageWrapper.find('#employee-filter').on('change', function() {
             currentFilters.employee = $(this).val();
             load_trip_data();
         });
 
-        $('#date-filter').on('change', function() {
+        pageWrapper.find('#date-filter').on('change', function() {
             currentFilters.date = $(this).val();
             load_trip_data();
         });
 
-        $('#clear-filters').on('click', function() {
-            $('#employee-filter').val('');
-            $('#date-filter').val(get_today_date());
+        pageWrapper.find('#clear-filters').on('click', function() {
+            pageWrapper.find('#employee-filter').val('');
+            pageWrapper.find('#date-filter').val('');
             currentFilters.employee = '';
-            currentFilters.date = get_today_date();
+            currentFilters.date = '';
             load_trip_data();
         });
 
-        $('#fit-all-routes').on('click', function() {
+        pageWrapper.find('#fit-all-routes').on('click', function() {
             var allPoints = [];
             Object.values(mapViewData.layers).forEach(function(layer) {
                 layer.getLatLngs().forEach(function(p) {
@@ -672,7 +691,7 @@
             }
         });
 
-        $('#fit-selected').on('click', function() {
+        pageWrapper.find('#fit-selected').on('click', function() {
             if (mapViewData.selectedId) {
                 select_trip(mapViewData.selectedId, true);
             }
@@ -714,14 +733,14 @@
 
     function render_trip_list() {
         var trips = get_filtered_trips();
-        var container = $('#trip-list-content');
+        var container = pageWrapper.find('#trip-list-content');
         container.empty();
 
         if (trips.length === 0) {
             container.append( /* nosemgrep */ 
                 '<div style="text-align: center; padding: 48px 20px; color: var(--t-text-muted);">' +
                 '<div style="font-size: 40px; margin-bottom: 12px;">📍</div>' +
-                '<div style="font-weight: 600;">No trips found for this date.</div>' +
+                '<div style="font-weight: 600;">No trips found.</div>' +
                 '<div style="font-size: 12px; margin-top: 4px;">Try selecting another date or employee.</div>' +
                 '</div>'
             );
@@ -773,10 +792,10 @@
     function select_trip(id, zoom) {
         mapViewData.selectedId = id;
 
-        $('.trip-card').removeClass('selected');
-        $('.trip-card[data-id="' + id + '"]').addClass('selected');
+        pageWrapper.find('.trip-card').removeClass('selected');
+        pageWrapper.find('.trip-card[data-id="' + id + '"]').addClass('selected');
 
-        var selectedCard = $('.trip-card[data-id="' + id + '"]');
+        var selectedCard = pageWrapper.find('.trip-card[data-id="' + id + '"]');
         if (selectedCard.length) {
             selectedCard[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
