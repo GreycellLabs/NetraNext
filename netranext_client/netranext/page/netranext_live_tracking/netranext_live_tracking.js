@@ -501,71 +501,36 @@
             var id = t.name || t.trip_id;
             var coords = t.coordinates;
 
-            if (!coords || coords.length < 2) return;
+            if (!coords || coords.length < 1) return;
 
             var isSelected = mapViewData.selectedId === id;
             var color = isSelected ? mapViewData.selectedColor : mapViewData.unselectedColor;
 
-            // Polyline
-            var polyline = L.polyline(coords, {
-                color: color,
-                weight: isSelected ? 8 : 4,
-                opacity: isSelected ? 1.0 : 0.5,
-                lineJoin: 'round'
-            }).addTo(mapViewData.map);
-
-            if (isSelected) {
-                polyline.bringToFront();
-            }
-
-            polyline.on('click', function(e) {
-                L.DomEvent.stopPropagation(e);
-                select_trip(id, true);
-            });
-
-            mapViewData.layers[id] = polyline;
-
-            // Markers: Start is Green, End/Current is Pulsating Blue
-            var startMarker = L.marker(coords[0], { icon: create_marker_icon('start', color) })
-                .addTo(mapViewData.map);
-            
-            var endMarker = L.marker(coords[coords.length - 1], { icon: create_live_marker_icon() })
+            // ONLY show the live blinking point (end/current position marker)
+            var currentPos = coords[coords.length - 1];
+            var endMarker = L.marker(currentPos, { icon: create_live_marker_icon() })
                 .addTo(mapViewData.map);
 
-            startMarker.bindPopup(create_trip_popup(t, 'start'));
             endMarker.bindPopup(create_trip_popup(t, 'live'));
 
-            var tripMarkers = [startMarker, endMarker];
-
-            // Draw intermediate extended waypoints if present
-            if (t.raw_coordinates && t.raw_coordinates.length > 0) {
-                t.raw_coordinates.forEach(function(coord) {
-                    if (coord.label === 'Trip Extended' || coord.label === 'Extended') {
-                        var lat = coord.latitude || coord.lat;
-                        var lng = coord.longitude || coord.lng;
-                        var extendMarker = L.marker([lat, lng], { icon: create_marker_icon('extended', color) })
-                            .addTo(mapViewData.map);
-                        
-                        extendMarker.bindPopup(create_trip_popup(t, 'extended', coord));
-                        extendMarker.setOpacity(isSelected ? 1 : 0.6);
-                        tripMarkers.push(extendMarker);
-                    }
-                });
-            }
-
-            mapViewData.markers[id] = tripMarkers;
-
-            startMarker.setOpacity(isSelected ? 1 : 0.6);
-            endMarker.setOpacity(isSelected ? 1 : 0.8);
-
-            coords.forEach(function(p) {
-                allPoints.push(p);
+            // Click on the live marker to select the trip
+            endMarker.on('click', function(e) {
+                L.DomEvent.stopPropagation(e);
+                select_trip(id, false);
             });
+
+            mapViewData.markers[id] = [endMarker];
+
+            allPoints.push(currentPos);
         });
 
-        // Zoom to fit all active routes only if no trip is currently selected
+        // Zoom to fit all active live positions only if no trip is currently selected
         if (allPoints.length > 0 && !mapViewData.selectedId) {
-            mapViewData.map.fitBounds(allPoints, { padding: [50, 50] });
+            if (allPoints.length === 1) {
+                mapViewData.map.setView(allPoints[0], 15);
+            } else {
+                mapViewData.map.fitBounds(allPoints, { padding: [50, 50] });
+            }
         }
     }
 
@@ -799,9 +764,9 @@
 
         update_view();
 
-        if (zoom && mapViewData.layers[id] && mapViewData.map) {
-            var bounds = mapViewData.layers[id].getBounds();
-            mapViewData.map.fitBounds(bounds, { padding: [100, 100], maxZoom: 16 });
+        if (zoom && mapViewData.markers[id] && mapViewData.markers[id].length > 0 && mapViewData.map) {
+            var marker = mapViewData.markers[id][0];
+            mapViewData.map.setView(marker.getLatLng(), 16);
         }
     }
 })();

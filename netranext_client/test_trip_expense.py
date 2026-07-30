@@ -115,3 +115,41 @@ def execute():
         print("\n--- ERROR LOGS ---")
         for e in errors:
             print(e.error)
+
+def simulate_active_trip():
+    import json
+    from datetime import datetime
+    print("--- Starting simulated active trip ---")
+    employee = frappe.db.get_value("Employee", {"status": "Active"})
+    if not employee:
+        print("Error: No active employee found.")
+        return
+        
+    print(f"Using employee: {employee}")
+    
+    # Delete any existing In Progress journeys
+    existing = frappe.db.get_all("NetraNext Journey", filters={"employee": employee, "status": "In Progress"})
+    for j in existing:
+        frappe.delete_doc("NetraNext Journey", j.name, force=1)
+    
+    # Create journey
+    journey = frappe.get_doc({
+        "doctype": "NetraNext Journey",
+        "employee": employee,
+        "journey_name": "Simulated Live Trip",
+        "status": "In Progress",
+        "start_time": datetime.now(),
+        "start_latitude": 23.0225,
+        "start_longitude": 72.5714,
+        "distance_km": 1.2,
+        "raw_gps_data": json.dumps([
+            {"latitude": 23.0125, "longitude": 72.5614, "timestamp": datetime.now().isoformat() + "Z"},
+            {"latitude": 23.0155, "longitude": 72.5644, "timestamp": datetime.now().isoformat() + "Z"},
+            {"latitude": 23.0185, "longitude": 72.5674, "timestamp": datetime.now().isoformat() + "Z"},
+            {"latitude": 23.0225, "longitude": 72.5714, "timestamp": datetime.now().isoformat() + "Z"}
+        ])
+    })
+    
+    journey.insert(ignore_permissions=True)
+    frappe.db.commit()
+    print(f"SUCCESS: Created active journey: {journey.name}")
