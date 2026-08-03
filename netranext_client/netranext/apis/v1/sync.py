@@ -1328,6 +1328,7 @@ def get_shift_reminders():
     whose shifts are starting or ending within the 15-minute window.
     Called by central server to dispatch push notifications.
     """
+    debug_logs = []
     try:
         # Validate sync request
         validate_sync_request()
@@ -1359,19 +1360,30 @@ def get_shift_reminders():
         now_naive = to_naive_local(now)
         reminders = []
         
+        debug_logs.append(f"Current local time (naive): {now_naive.strftime('%Y-%m-%d %H:%M:%S')}")
+        debug_logs.append(f"Active employees count: {len(employees)}")
+        
         for emp in employees:
             if not emp.user_id:
+                debug_logs.append(f"Employee {emp.employee_name} ({emp.name}) skipped: No User ID linked.")
                 continue
                 
             shift_details = get_employee_shift(emp.name, now, consider_default_shift=True)
             if not shift_details or not shift_details.get("start_datetime"):
+                debug_logs.append(f"Employee {emp.employee_name} ({emp.name}) skipped: No shift found for today.")
                 continue
                 
             start_dt = to_naive_local(shift_details.get("start_datetime"))
             end_dt = to_naive_local(shift_details.get("end_datetime"))
             
+            debug_logs.append(
+                f"Employee {emp.employee_name} ({emp.name}) has shift '{shift_details.get('shift_type')}' today: "
+                f"Start={start_dt.strftime('%H:%M:%S')}, End={end_dt.strftime('%H:%M:%S')}"
+            )
+            
             # Check-in reminder window (run window: within 15 minutes of shift start)
             time_since_start = (now_naive - start_dt).total_seconds() / 60
+            debug_logs.append(f"  Check-in: time_since_start = {time_since_start:.2f} minutes.")
             if 0 <= time_since_start <= 15:
                 # Check if check-in log exists for today within the start threshold (convert to UTC for database query)
                 checkin_threshold_utc = to_utc(start_dt - timedelta(hours=2))
@@ -1387,9 +1399,15 @@ def get_shift_reminders():
                         "type": "check_in",
                         "shift_time": start_dt.strftime('%I:%M %p')
                     })
+                    debug_logs.append("  Check-in: Added to reminder list.")
+                else:
+                    debug_logs.append("  Check-in: Skipped because check-in log already exists.")
+            else:
+                debug_logs.append(f"  Check-in: Skipped because time_since_start ({time_since_start:.2f} mins) is outside 0..15 window.")
                     
             # Check-out reminder window (run window: within 15 minutes of shift end)
             time_since_end = (now_naive - end_dt).total_seconds() / 60
+            debug_logs.append(f"  Check-out: time_since_end = {time_since_end:.2f} minutes.")
             if 0 <= time_since_end <= 15:
                 # Check if check-out log exists for today within the end threshold (convert to UTC for database query)
                 checkout_threshold_utc = to_utc(end_dt - timedelta(hours=2))
@@ -1405,9 +1423,17 @@ def get_shift_reminders():
                         "type": "check_out",
                         "shift_time": end_dt.strftime('%I:%M %p')
                     })
+                    debug_logs.append("  Check-out: Added to reminder list.")
+                else:
+                    debug_logs.append("  Check-out: Skipped because check-out log already exists.")
+            else:
+                debug_logs.append(f"  Check-out: Skipped because time_since_end ({time_since_end:.2f} mins) is outside 0..15 window.")
                     
+        # Log all debug statements
+        frappe.log_error(title="Shift Reminders Client Debug", message="\n".join(debug_logs))
         return create_success_response("Shift reminders retrieved successfully", reminders)
 
     except Exception as e:
+        frappe.log_error(title="Shift Reminders Client Exception", message=f"{str(e)}\nLogs:\n" + "\n".join(debug_logs))
         return handle_api_exception(e, "EMPLOYEE_SYNC")
 
