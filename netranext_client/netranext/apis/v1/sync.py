@@ -24,6 +24,9 @@ def validate_sync_request():
     Validate that the request comes from a legitimate central server
     Checks Integration Token from request headers
     """
+    if not hasattr(frappe, "local") or not getattr(frappe.local, "request", None):
+        return True
+
     incoming_token = frappe.get_request_header("X-NetraNext-Token")
 
     if not incoming_token:
@@ -1317,3 +1320,94 @@ def extend_trip(trip_id=None, reason=None, new_destination=None):
 
     except Exception as e:
         return handle_api_exception(e, "JOURNEY_SYNC")
+
+@frappe.whitelist(allow_guest=True)
+def get_shift_reminders():
+    """
+    Get shift reminders (check-in/check-out) for active employees
+    whose shifts are starting or ending within the 15-minute window.
+    Called by central server to dispatch push notifications.
+    """
+    try:
+        # Validate sync request
+        validate_sync_request()
+
+        import pytz
+        from datetime import timedelta
+        from frappe.utils import get_system_timezone
+        from hrms.hr.doctype.shift_assignment.shift_assignment import get_employee_shift
+
+        now = frappe.utils.now_datetime()
+        employees = frappe.get_all("Employee", filters={"status": "Active"}, fields=["name", "employee_name", "user_id"])
+        
+        system_tz = pytz.timezone(get_system_timezone() or "UTC")
+        
+        def to_utc(dt):
+            if not dt:
+                return None
+            if dt.tzinfo is not None:
+                return dt.astimezone(pytz.utc)
+            return system_tz.localize(dt).astimezone(pytz.utc)
+
+        def to_naive_local(dt):
+            if not dt:
+                return None
+            if dt.tzinfo is not None:
+                return dt.astimezone(system_tz).replace(tzinfo=None)
+            return dt
+
+        now_naive = to_naive_local(now)
+        reminders = []
+        
+        for emp in employees:
+            if not emp.user_id:
+                continue
+                
+            shift_details = get_employee_shift(emp.name, now, consider_default_shift=True)
+            if not shift_details or not shift_details.get("start_datetime"):
+                continue
+                
+            start_dt = to_naive_local(shift_details.get("start_datetime"))
+            end_dt = to_naive_local(shift_details.get("end_datetime"))
+            
+            # Check-in reminder window (run window: within 15 minutes of shift start)
+            time_since_start = (now_naive - start_dt).total_seconds() / 60
+            if 0 <= time_since_start <= 15:
+                # Check if check-in log exists for today within the start threshold (convert to UTC for database query)
+                checkin_threshold_utc = to_utc(start_dt - timedelta(hours=2))
+                checkin_exists = frappe.db.exists("Employee Checkin", {
+                    "employee": emp.name,
+                    "log_type": "IN",
+                    "time": [">=", checkin_threshold_utc]
+                })
+                if not checkin_exists:
+                    reminders.append({
+                        "user_id": emp.user_id,
+                        "employee_name": emp.employee_name,
+                        "type": "check_in",
+                        "shift_time": start_dt.strftime('%I:%M %p')
+                    })
+                    
+            # Check-out reminder window (run window: within 15 minutes of shift end)
+            time_since_end = (now_naive - end_dt).total_seconds() / 60
+            if 0 <= time_since_end <= 15:
+                # Check if check-out log exists for today within the end threshold (convert to UTC for database query)
+                checkout_threshold_utc = to_utc(end_dt - timedelta(hours=2))
+                checkout_exists = frappe.db.exists("Employee Checkin", {
+                    "employee": emp.name,
+                    "log_type": "OUT",
+                    "time": [">=", checkout_threshold_utc]
+                })
+                if not checkout_exists:
+                    reminders.append({
+                        "user_id": emp.user_id,
+                        "employee_name": emp.employee_name,
+                        "type": "check_out",
+                        "shift_time": end_dt.strftime('%I:%M %p')
+                    })
+                    
+        return create_success_response("Shift reminders retrieved successfully", reminders)
+
+    except Exception as e:
+        return handle_api_exception(e, "EMPLOYEE_SYNC")
+

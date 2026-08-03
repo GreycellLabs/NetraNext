@@ -290,6 +290,7 @@ api_whitelisted_methods = [
     "netranext_client.netranext.apis.v1.sync.update_employee_device_id",
     "netranext_client.netranext.apis.v1.sync.health_check",
     "netranext_client.netranext.apis.v1.dashboard.get_dashboard_data",
+    "netranext_client.netranext.apis.v1.sync.get_shift_reminders",
 ]
 
 # Custom Fields
