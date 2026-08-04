@@ -414,3 +414,20 @@
         box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
     }
 }
+
+/* Custom Employee map tooltip */
+.employee-map-tooltip {
+    background-color: #0f172a !important; /* Premium dark background */
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 6px !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 11px !important;
+    padding: 4px 8px !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+    font-family: inherit !important;
+}
+
+.employee-map-tooltip::before {
+    border-top-color: #0f172a !important; /* Tooltip arrow color matching tooltip background */
+}

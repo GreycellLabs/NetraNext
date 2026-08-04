@@ -513,6 +513,14 @@
 
             endMarker.bindPopup(create_trip_popup(t, 'live'));
 
+            // Bind permanent tooltip to identify the employee
+            endMarker.bindTooltip(t.employee_name || t.employee, {
+                permanent: true,
+                direction: 'top',
+                offset: [0, -10],
+                className: 'employee-map-tooltip'
+            });
+
             // Click on the live marker to select the trip
             endMarker.on('click', function(e) {
                 L.DomEvent.stopPropagation(e);
