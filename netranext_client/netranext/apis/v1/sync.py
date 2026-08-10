@@ -293,6 +293,9 @@ def store_attendance(att_data):
                             in_geofence = True
                             break
 
+        face_status = att_data.get("custom_face_status", "Approved")
+        face_failure_reason = att_data.get("custom_face_failure_reason")
+
         checkin_doc = frappe.get_doc({
             "doctype": "Employee Checkin",
             "employee": employee_id,
@@ -303,8 +306,10 @@ def store_attendance(att_data):
             "longitude": longitude,
             "location_address": att_data.get("location_address"),
             "photo_proof": local_photo_url,
-            "skip_auto_attendance": 0 if in_geofence else 1,
-            "custom_location_status": "Approved" if in_geofence else "Pending Approval"
+            "skip_auto_attendance": 0 if (in_geofence and face_status == "Approved") else 1,
+            "custom_location_status": "Approved" if in_geofence else "Pending Approval",
+            "custom_face_status": face_status,
+            "custom_face_failure_reason": face_failure_reason
         })
 
         checkin_doc.insert(ignore_permissions=True)
@@ -326,6 +331,23 @@ def store_attendance(att_data):
                 approval_doc.insert(ignore_permissions=True)
             except Exception as approval_err:
                 tenant_bench_logger.error(f"Failed to create Location Checkin Approval: {str(approval_err)}", "ATTENDANCE_SYNC")
+
+        # If face recognition is pending approval, create face approval request
+        if face_status == "Pending Approval":
+            try:
+                face_approval_doc = frappe.get_doc({
+                    "doctype": "NetraNext Face Checkin Approval",
+                    "employee": employee_id,
+                    "employee_checkin": checkin_doc.name,
+                    "log_type": att_data["log_type"],
+                    "time": att_data["time"],
+                    "failure_reason": face_failure_reason or "Match Failure",
+                    "photo_proof": local_photo_url,
+                    "status": "Pending"
+                })
+                face_approval_doc.insert(ignore_permissions=True)
+            except Exception as face_approval_err:
+                tenant_bench_logger.error(f"Failed to create Face Checkin Approval: {str(face_approval_err)}", "ATTENDANCE_SYNC")
 
         tenant_bench_logger.info(f"Attendance stored for employee {att_data['employee_id']}", "ATTENDANCE_SYNC")
 
@@ -763,7 +785,8 @@ def get_employee_checkins(employee_id=None, from_date=None, to_date=None, limit=
             fields=[
                 "name", "employee", "log_type", "time",
                 "device_id", "latitude", "longitude",
-                "location_address", "photo_proof", "creation", "modified"
+                "location_address", "photo_proof", "creation", "modified",
+                "custom_face_status", "custom_location_status"
             ],
             order_by="time asc",
             limit=int(limit),

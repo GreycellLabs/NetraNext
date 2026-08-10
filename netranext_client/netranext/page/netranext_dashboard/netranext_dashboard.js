@@ -421,6 +421,14 @@ function render_dashboard(data) {
             <span class="shortcut-label">Face Registration Requests</span>
             <span class="shortcut-arrow">↗</span>
         </div>
+        <div class="shortcut-item" onclick="frappe.set_route('List', 'NetraNext Location Checkin Approval')">
+            <span class="shortcut-label">Location Approvals</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
+        <div class="shortcut-item" onclick="frappe.set_route('List', 'NetraNext Face Checkin Approval')">
+            <span class="shortcut-label">Face Check-in Approvals</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
         <div class="shortcut-item" onclick="frappe.set_route('List', 'NetraNext Journey')">
             <span class="shortcut-label">Employee Trips</span>
             <span class="shortcut-arrow">↗</span>

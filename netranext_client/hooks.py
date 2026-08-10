@@ -370,6 +370,23 @@ custom_fields = {
             "default": "Approved",
             "insert_after": "location_map",
             "read_only": 1
+        },
+        {
+            "fieldname": "custom_face_status",
+            "fieldtype": "Select",
+            "label": "Face Status",
+            "options": "Approved\nPending Approval\nRejected",
+            "default": "Approved",
+            "insert_after": "custom_location_status",
+            "read_only": 1
+        },
+        {
+            "fieldname": "custom_face_failure_reason",
+            "fieldtype": "Select",
+            "label": "Face Failure Reason",
+            "options": "Match Failure\nNo Face Detected\nMultiple Faces\nService Error",
+            "insert_after": "custom_face_status",
+            "read_only": 1
         }
     ]
 }
