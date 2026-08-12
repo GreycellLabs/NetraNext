@@ -431,3 +431,69 @@
 .employee-map-tooltip::before {
     border-top-color: #0f172a !important; /* Tooltip arrow color matching tooltip background */
 }
+
+/* Offline Styles */
+.live-marker-dot.offline {
+    background-color: #64748b; /* Gray/slate for offline */
+}
+
+.live-marker-pulse.offline {
+    background-color: rgba(100, 116, 139, 0.2);
+    animation: none; /* Disable rapid pulse for offline */
+}
+
+.card-live-badge.offline {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #475569;
+}
+
+.card-live-dot.offline {
+    background-color: #64748b;
+    animation: none; /* Disable pulse animation */
+}
+
+.trip-card.offline {
+    border-left: 4px solid #94a3b8;
+}
+
+.trip-card.offline:hover {
+    border-color: #94a3b8;
+}
+
+/* Selected marker & tooltip styles */
+.employee-map-tooltip.selected-tooltip {
+    background-color: #1e3a8a !important; /* Deep primary blue / highlighted background */
+    border: 2px solid #3b82f6 !important; /* Vibrant blue border */
+    color: #ffffff !important;
+    font-size: 12px !important;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.7) !important;
+    font-weight: 800 !important;
+}
+
+.employee-map-tooltip.selected-tooltip::before {
+    border-top-color: #1e3a8a !important;
+}
+
+.live-marker-dot.selected {
+    background-color: #10b981; /* Green for selected active */
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 10px #10b981;
+}
+
+.live-marker-dot.offline.selected {
+    background-color: #f59e0b; /* Amber/Orange for selected offline */
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 10px #f59e0b;
+}
+
+.live-marker-pulse.selected {
+    background-color: rgba(16, 185, 129, 0.6);
+}
+
+.live-marker-pulse.offline.selected {
+    background-color: rgba(245, 158, 11, 0.4);
+    animation: markerPulse 1.8s infinite ease-out; /* Enable pulse for selected offline to stand out */
+}
+
+

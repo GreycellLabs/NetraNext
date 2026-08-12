@@ -508,18 +508,34 @@
 
             // ONLY show the live blinking point (end/current position marker)
             var currentPos = coords[coords.length - 1];
-            var endMarker = L.marker(currentPos, { icon: create_live_marker_icon() })
+            var isOffline = t.is_online === false;
+            
+            // Highlight selected marker: higher z-index so it stays on top of overlapping markers
+            var markerOptions = { 
+                icon: create_live_marker_icon(isOffline, isSelected)
+            };
+            if (isSelected) {
+                markerOptions.zIndexOffset = 1000;
+            }
+            
+            var endMarker = L.marker(currentPos, markerOptions)
                 .addTo(mapViewData.map);
 
             endMarker.bindPopup(create_trip_popup(t, 'live'));
 
             // Bind permanent tooltip to identify the employee
+            var tooltipClass = isSelected ? 'employee-map-tooltip selected-tooltip' : 'employee-map-tooltip';
             endMarker.bindTooltip(t.employee_name || t.employee, {
                 permanent: true,
                 direction: 'top',
                 offset: [0, -10],
-                className: 'employee-map-tooltip'
+                className: tooltipClass
             });
+
+            // If selected, auto-open the popup on map redraw
+            if (isSelected) {
+                endMarker.openPopup();
+            }
 
             // Click on the live marker to select the trip
             endMarker.on('click', function(e) {
@@ -562,14 +578,15 @@
         });
     }
 
-    function create_live_marker_icon() {
-        var html = '<div class="live-marker-container">' +
-            '<div class="live-marker-dot"></div>' +
-            '<div class="live-marker-pulse"></div>' +
+    function create_live_marker_icon(isOffline, isSelected) {
+        var markerClass = (isOffline ? 'offline' : '') + (isSelected ? ' selected' : '');
+        var html = '<div class="live-marker-container ' + markerClass + '">' +
+            '<div class="live-marker-dot ' + markerClass + '"></div>' +
+            '<div class="live-marker-pulse ' + markerClass + '"></div>' +
             '</div>';
         return L.divIcon({
             html: html,
-            className: 'custom-live-marker',
+            className: 'custom-live-marker ' + markerClass,
             iconSize: [24, 24],
             iconAnchor: [12, 12],
             popupAnchor: [0, -12]
@@ -577,9 +594,10 @@
     }
 
     function create_trip_popup(t, type, coord) {
-        var title = type === 'start' ? 'Trip Start' : (type === 'extended' ? 'Trip Extended' : '● Live Position');
-        var accentColor = type === 'start' ? '#10b981' : (type === 'extended' ? '#fbbf24' : '#3b82f6');
-        var timeStr = type === 'start' ? t.start_time : (type === 'extended' ? (coord ? coord.timestamp : '') : t.modified);
+        var isOffline = t.is_online === false;
+        var title = type === 'start' ? 'Trip Start' : (type === 'extended' ? 'Trip Extended' : (isOffline ? '● Offline Position' : '● Live Position'));
+        var accentColor = type === 'start' ? '#10b981' : (type === 'extended' ? '#fbbf24' : (isOffline ? '#64748b' : '#3b82f6'));
+        var timeStr = type === 'start' ? t.start_time : (type === 'extended' ? (coord ? coord.timestamp : '') : (t.last_update_time || t.modified));
         var locationStr = type === 'start' ? (t.start_location || 'Start point') : (type === 'extended' ? (coord ? (coord.latitude + ', ' + coord.longitude) : 'Extended point') : (t.coordinates[t.coordinates.length - 1].join(', ')));
         var displayLocation = format_location_display(locationStr);
 
@@ -589,6 +607,10 @@
             '<div class="popup-subtitle">' + (t.employee_name || t.employee) + '</div>' +
             '</div>' +
             '<div class="popup-body">' +
+            '<div class="popup-info-row">' +
+            '<span class="label">Status:</span>' +
+            '<span class="val" style="color: ' + (isOffline ? '#ef4444' : '#10b981') + '; font-weight: 700;">' + (isOffline ? 'Offline' : 'Active') + '</span>' +
+            '</div>' +
             '<div class="popup-info-row">' +
             '<span class="label">Time:</span>' +
             '<span class="val">' + format_time_12hr(timeStr) + '</span>' +
@@ -727,14 +749,22 @@
             var startLoc = t.start_location || 'Start point';
             var currentLoc = (t.coordinates && t.coordinates.length > 0) ? t.coordinates[t.coordinates.length - 1].join(', ') : 'Unknown location';
 
-            var card = $('<div class="trip-card' + (isSelected ? ' selected' : '') + '" data-id="' + id + '">' +
+            var isOffline = t.is_online === false;
+            var badgeHtml = isOffline 
+                ? '<span class="card-live-badge offline"><span class="card-live-dot offline"></span>Offline</span>'
+                : '<span class="card-live-badge"><span class="card-live-dot"></span>Live</span>';
+            var timeStatusHtml = isOffline 
+                ? '<span style="color: var(--t-danger); font-weight: 600;">Last update: ' + format_time_12hr(t.last_update_time || t.modified) + '</span>'
+                : format_time_12hr(t.start_time) + ' - Present';
+
+            var card = $('<div class="trip-card' + (isSelected ? ' selected' : '') + (isOffline ? ' offline' : '') + '" data-id="' + id + '">' +
                 '<div class="trip-card-header" style="align-items: center; margin-bottom: 8px;">' +
                 '<div class="trip-card-emp" style="flex: 1; display: flex; align-items: center; gap: 8px;">' + 
                 '<span>' + (t.employee_name || t.employee) + '</span>' +
-                '<span class="card-live-badge"><span class="card-live-dot"></span>Live</span>' +
+                badgeHtml +
                 '</div>' +
                 '<div style="font-size: 12px; color: var(--t-text-muted); margin: 0 12px; font-weight: 500;">' +
-                format_time_12hr(t.start_time) + ' - Present' +
+                timeStatusHtml +
                 '</div>' +
                 '<div class="trip-card-dist" style="margin-left: auto;">' + (t.distance_km || 0) + ' km</div>' +
                 '</div>' +

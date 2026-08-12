@@ -24,7 +24,8 @@
   "sync_settings_section",
   "auto_sync_enabled",
   "sync_interval_minutes",
-  "last_sync_timestamp"
+  "last_sync_timestamp",
+  "offline_timeout_minutes"
  ],
  "fields": [
   {
@@ -141,6 +142,13 @@
    "label": "Last Sync Timestamp",
    "read_only": 1,
    "hidden": 1
+  },
+  {
+   "default": "2",
+   "fieldname": "offline_timeout_minutes",
+   "fieldtype": "Int",
+   "label": "Offline Timeout (minutes)",
+   "description": "Inactivity threshold (in minutes) before an employee is considered offline on the tracking map"
   }
  ],
  "index_web_pages_for_search": 1,

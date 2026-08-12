@@ -64,6 +64,13 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
             frappe.log_error(f"Present count error: {e}")
             present_today = 0
 
+        # Get offline timeout setting
+        try:
+            offline_timeout = frappe.db.get_single_value("NetraNext Settings", "offline_timeout_minutes")
+            offline_timeout = int(offline_timeout) if offline_timeout else 2
+        except Exception:
+            offline_timeout = 2
+
         # Get REAL journey records
         journeys = []
         try:
@@ -73,7 +80,7 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                     journey_sql = """
                         SELECT name, employee, start_time as journey_date, start_time, end_time,
                                start_location, end_location, distance_km as total_distance, status,
-                               raw_gps_data
+                               raw_gps_data, modified
                         FROM `tabNetraNext Journey`
                         ORDER BY creation DESC
                         LIMIT %s
@@ -84,7 +91,7 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                     journey_sql = """
                         SELECT name, employee, start_time as journey_date, start_time, end_time,
                                start_location, end_location, distance_km as total_distance, status,
-                               raw_gps_data
+                               raw_gps_data, modified
                         FROM `tabNetraNext Journey`
                         WHERE DATE(start_time) >= %s AND DATE(start_time) <= %s
                         ORDER BY creation DESC
@@ -109,6 +116,44 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                         except Exception:
                             pass
 
+                    # Determine online status based on timeout
+                    is_online = True
+                    last_update_time_str = ""
+                    
+                    if raw_coords:
+                        last_coord = raw_coords[-1]
+                        last_update_time_str = last_coord.get("timestamp") or ""
+                    
+                    if not last_update_time_str:
+                        # Fallback to journey's modified or start_time
+                        fallback_dt = journey.get("modified") or journey.get("start_time")
+                        if fallback_dt:
+                            if hasattr(fallback_dt, "isoformat"):
+                                last_update_time_str = fallback_dt.isoformat() + "Z"
+                            else:
+                                last_update_time_str = str(fallback_dt)
+                                
+                    if last_update_time_str:
+                        try:
+                            from datetime import timezone
+                            # Parse timestamp
+                            ts_str = last_update_time_str.replace("Z", "+00:00")
+                            if " " in ts_str and "T" not in ts_str:
+                                ts_str = ts_str.replace(" ", "T")
+                            last_dt = datetime.fromisoformat(ts_str)
+                            
+                            # Compare with timezone awareness check
+                            if last_dt.tzinfo is not None:
+                                current_dt = datetime.now(timezone.utc)
+                            else:
+                                current_dt = datetime.now()
+                                
+                            delta_minutes = (current_dt - last_dt).total_seconds() / 60.0
+                            if delta_minutes > offline_timeout:
+                                is_online = False
+                        except Exception as parse_ex:
+                            frappe.log_error(f"Error parsing last update timestamp {last_update_time_str}: {parse_ex}")
+
                     journeys.append({
                         "name": journey.name,
                         "employee": journey.employee,
@@ -119,7 +164,9 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                         "end_location": journey.end_location or "Unknown",
                         "distance_km": journey.total_distance or 0,
                         "status": journey.status or "Completed",
-                        "raw_coordinates": raw_coords
+                        "raw_coordinates": raw_coords,
+                        "is_online": is_online,
+                        "last_update_time": last_update_time_str
                     })
         except Exception as e:
             frappe.log_error(f"Journey fetch error: {e}")
