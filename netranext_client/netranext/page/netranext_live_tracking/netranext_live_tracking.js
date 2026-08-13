@@ -497,55 +497,78 @@
         var trips = get_filtered_trips();
         var allPoints = [];
 
+        // Group trips by coordinate to detect overlapping locations
+        var coordsGroups = {};
         trips.forEach(function (t) {
-            var id = t.name || t.trip_id;
             var coords = t.coordinates;
-
             if (!coords || coords.length < 1) return;
-
-            var isSelected = mapViewData.selectedId === id;
-            var color = isSelected ? mapViewData.selectedColor : mapViewData.unselectedColor;
-
-            // ONLY show the live blinking point (end/current position marker)
             var currentPos = coords[coords.length - 1];
-            var isOffline = t.is_online === false;
-            
-            // Highlight selected marker: higher z-index so it stays on top of overlapping markers
-            var markerOptions = { 
-                icon: create_live_marker_icon(isOffline, isSelected)
-            };
-            if (isSelected) {
-                markerOptions.zIndexOffset = 1000;
+            var key = currentPos[0].toFixed(5) + "," + currentPos[1].toFixed(5);
+            if (!coordsGroups[key]) {
+                coordsGroups[key] = [];
             }
-            
-            var endMarker = L.marker(currentPos, markerOptions)
-                .addTo(mapViewData.map);
+            coordsGroups[key].push(t);
+        });
 
-            endMarker.bindPopup(create_trip_popup(t, 'live'));
+        // Render groups and apply offset/spiderfying if multiple markers overlap
+        Object.keys(coordsGroups).forEach(function (key) {
+            var group = coordsGroups[key];
+            var N = group.length;
 
-            // Bind permanent tooltip to identify the employee
-            var tooltipClass = isSelected ? 'employee-map-tooltip selected-tooltip' : 'employee-map-tooltip';
-            endMarker.bindTooltip(t.employee_name || t.employee, {
-                permanent: true,
-                direction: 'top',
-                offset: [0, -10],
-                className: tooltipClass
+            group.forEach(function (t, index) {
+                var id = t.name || t.trip_id;
+                var coords = t.coordinates;
+                var currentPos = [coords[coords.length - 1][0], coords[coords.length - 1][1]];
+
+                // Apply offset if there are multiple markers at the same location
+                if (N > 1) {
+                    var angle = (index * 2 * Math.PI) / N;
+                    // ~12-15 meters offset in degrees
+                    var offsetLat = Math.sin(angle) * 0.00012;
+                    var offsetLng = Math.cos(angle) * 0.00012;
+                    currentPos = [currentPos[0] + offsetLat, currentPos[1] + offsetLng];
+                }
+
+                var isSelected = mapViewData.selectedId === id;
+                var color = isSelected ? mapViewData.selectedColor : mapViewData.unselectedColor;
+                var isOffline = t.is_online === false;
+                
+                // Highlight selected marker: higher z-index so it stays on top of overlapping markers
+                var markerOptions = { 
+                    icon: create_live_marker_icon(isOffline, isSelected)
+                };
+                if (isSelected) {
+                    markerOptions.zIndexOffset = 1000;
+                }
+                
+                var endMarker = L.marker(currentPos, markerOptions)
+                    .addTo(mapViewData.map);
+
+                endMarker.bindPopup(create_trip_popup(t, 'live'));
+
+                // Bind permanent tooltip to identify the employee
+                var tooltipClass = isSelected ? 'employee-map-tooltip selected-tooltip' : 'employee-map-tooltip';
+                endMarker.bindTooltip(t.employee_name || t.employee, {
+                    permanent: true,
+                    direction: 'top',
+                    offset: [0, -10],
+                    className: tooltipClass
+                });
+
+                // If selected, auto-open the popup on map redraw
+                if (isSelected) {
+                    endMarker.openPopup();
+                }
+
+                // Click on the live marker to select the trip
+                endMarker.on('click', function(e) {
+                    L.DomEvent.stopPropagation(e);
+                    select_trip(id, false);
+                });
+
+                mapViewData.markers[id] = [endMarker];
+                allPoints.push(currentPos);
             });
-
-            // If selected, auto-open the popup on map redraw
-            if (isSelected) {
-                endMarker.openPopup();
-            }
-
-            // Click on the live marker to select the trip
-            endMarker.on('click', function(e) {
-                L.DomEvent.stopPropagation(e);
-                select_trip(id, false);
-            });
-
-            mapViewData.markers[id] = [endMarker];
-
-            allPoints.push(currentPos);
         });
 
         // Zoom to fit all active live positions only if no trip is currently selected

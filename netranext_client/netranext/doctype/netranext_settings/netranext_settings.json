@@ -15,6 +15,7 @@
   "column_break_top",
   "status",
   "payable_account",
+  "offline_timeout_minutes",
   "api_credentials_section",
   "central_server_url",
   "api_key",
@@ -24,8 +25,7 @@
   "sync_settings_section",
   "auto_sync_enabled",
   "sync_interval_minutes",
-  "last_sync_timestamp",
-  "offline_timeout_minutes"
+  "last_sync_timestamp"
  ],
  "fields": [
   {
