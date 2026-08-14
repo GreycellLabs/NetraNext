@@ -544,15 +544,14 @@
                 var endMarker = L.marker(currentPos, markerOptions)
                     .addTo(mapViewData.map);
                 
-                // Only bind name tooltip to show on top when selected (no hover tooltips, no popups)
-                if (isSelected) {
-                    endMarker.bindTooltip(t.employee_name || t.employee, {
-                        permanent: true,
-                        direction: 'top',
-                        offset: [0, -10],
-                        className: 'employee-map-tooltip selected-tooltip'
-                    });
-                }
+                // Bind name tooltip permanently for all markers (no popups), applying selected styling if selected
+                var tooltipClass = isSelected ? 'employee-map-tooltip selected-tooltip' : 'employee-map-tooltip';
+                endMarker.bindTooltip(t.employee_name || t.employee, {
+                    permanent: true,
+                    direction: 'top',
+                    offset: [0, -10],
+                    className: tooltipClass
+                });
 
                 // Click on the live marker to select the trip
                 endMarker.on('click', function(e) {
