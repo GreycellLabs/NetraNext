@@ -504,10 +504,23 @@ def store_journey(journey_data):
         flutter_journey_id = journey_data.get("journey_id")
         trip_id = journey_data.get("trip_id")
         
-        # Check if journey already exists from the same Flutter session
+        # Check if journey already exists from the same Flutter session (with cache lock to prevent concurrent double-inserts)
         existing_journey = None
         if flutter_journey_id:
-            existing_journey = frappe.db.get_value("NetraNext Journey", {"flutter_journey_id": flutter_journey_id}, "name")
+            lock_key = f"lock_journey_{flutter_journey_id}"
+            if frappe.cache().get_value(lock_key):
+                # A request for this journey is already running. Wait for it to commit.
+                import time
+                for _ in range(10):
+                    time.sleep(0.3)
+                    existing_journey = frappe.db.get_value("NetraNext Journey", {"flutter_journey_id": flutter_journey_id}, "name")
+                    if existing_journey:
+                        break
+            else:
+                frappe.cache().set_value(lock_key, "1", expires_in_sec=15)
+                
+            if not existing_journey:
+                existing_journey = frappe.db.get_value("NetraNext Journey", {"flutter_journey_id": flutter_journey_id}, "name")
             
         if existing_journey:
             # Update the existing journey (e.g., transition from In Progress -> Completed)
@@ -522,6 +535,14 @@ def store_journey(journey_data):
             journey_doc = frappe.get_doc(doc_data)
             journey_doc.insert(ignore_permissions=True)
             action = "stored"
+
+        # If this journey is "In Progress", ensure no other journeys for this employee are "In Progress"
+        if doc_data.get("status") == "In Progress":
+            frappe.db.sql("""
+                UPDATE `tabNetraNext Journey`
+                SET status = 'Completed', end_time = %s
+                WHERE employee = %s AND status = 'In Progress' AND name != %s
+            """, (frappe.utils.now_datetime(), doc_data["employee"], journey_doc.name))
         
         tenant_bench_logger.info(f"Checking Scheduled Trip. Received trip_id: {trip_id}", "JOURNEY_SYNC")
         
