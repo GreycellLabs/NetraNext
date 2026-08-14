@@ -543,21 +543,15 @@
                 
                 var endMarker = L.marker(currentPos, markerOptions)
                     .addTo(mapViewData.map);
-
-                endMarker.bindPopup(create_trip_popup(t, 'live'));
-
-                // Bind permanent tooltip to identify the employee only when selected
-                var tooltipClass = isSelected ? 'employee-map-tooltip selected-tooltip' : 'employee-map-tooltip';
-                endMarker.bindTooltip(t.employee_name || t.employee, {
-                    permanent: isSelected,
-                    direction: 'top',
-                    offset: [0, -10],
-                    className: tooltipClass
-                });
-
-                // If selected, auto-open the popup on map redraw
+                
+                // Only bind name tooltip to show on top when selected (no hover tooltips, no popups)
                 if (isSelected) {
-                    endMarker.openPopup();
+                    endMarker.bindTooltip(t.employee_name || t.employee, {
+                        permanent: true,
+                        direction: 'top',
+                        offset: [0, -10],
+                        className: 'employee-map-tooltip selected-tooltip'
+                    });
                 }
 
                 // Click on the live marker to select the trip
