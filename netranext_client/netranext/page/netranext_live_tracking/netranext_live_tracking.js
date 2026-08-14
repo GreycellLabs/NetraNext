@@ -546,10 +546,10 @@
 
                 endMarker.bindPopup(create_trip_popup(t, 'live'));
 
-                // Bind permanent tooltip to identify the employee
+                // Bind permanent tooltip to identify the employee only when selected
                 var tooltipClass = isSelected ? 'employee-map-tooltip selected-tooltip' : 'employee-map-tooltip';
                 endMarker.bindTooltip(t.employee_name || t.employee, {
-                    permanent: true,
+                    permanent: isSelected,
                     direction: 'top',
                     offset: [0, -10],
                     className: tooltipClass
