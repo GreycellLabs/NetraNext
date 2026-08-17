@@ -506,27 +506,10 @@
                 lineJoin: 'round'
             }).addTo(mapViewData.map);
 
-            // Snap route to roads using public OSRM Routing API
-            if (coords.length >= 2) {
-                var routeCoordsString = coords.map(function(c) { return c[1] + "," + c[0]; }).join(";");
-                var hasInvalidCoords = coords.some(function(c) { return isNaN(c[0]) || isNaN(c[1]); });
-                if (!hasInvalidCoords && routeCoordsString.length < 2000) {
-                    var osrmUrl = "https://router.project-osrm.org/route/v1/driving/" + routeCoordsString + "?overview=full&geometries=geojson";
-                    fetch(osrmUrl)
-                        .then(function(res) { return res.json(); })
-                        .then(function(result) {
-                            if (result.code === 'Ok' && result.routes && result.routes.length > 0) {
-                                var roadCoords = result.routes[0].geometry.coordinates.map(function(pt) {
-                                    return [pt[1], pt[0]]; // convert [lon, lat] to [lat, lon]
-                                });
-                                polyline.setLatLngs(roadCoords);
-                            }
-                        })
-                        .catch(function(err) {
-                            console.warn("OSRM routing failed, falling back to straight line:", err);
-                        });
-                }
-            }
+            // Draw the exact route recorded during the trip.
+            // Do NOT re-route via a routing service (e.g. OSRM /route): it would snap the
+            // waypoints to its own fastest/alternative road path, showing a route different
+            // from the one actually travelled, and could change between renders.
 
             if (isSelected) {
                 polyline.bringToFront();
