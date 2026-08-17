@@ -219,6 +219,30 @@ def store_attendance(att_data):
         # Check if employee exists
         validate_employee_exists(att_data["employee_id"])
 
+        # Prevent duplicate check-in/checkout log for the same employee on the same day
+        from frappe.utils import get_datetime, nowdate
+
+        day_start = get_datetime(nowdate())
+        if frappe.db.exists("Employee Checkin", {
+            "employee": att_data["employee_id"],
+            "log_type": att_data["log_type"],
+            "time": [">=", day_start],
+        }):
+            employee_name = frappe.db.get_value("Employee", att_data["employee_id"], "employee_name") or att_data["employee_id"]
+            tenant_bench_logger.info(
+                f"Skipped duplicate attendance for {att_data['employee_id']} ({att_data['log_type']}) - already exists today",
+                "ATTENDANCE_SYNC"
+            )
+            return create_success_response(
+                message=f"{employee_name} is already checked in",
+                data={
+                    "already_checked_in": True,
+                    "checkin_id": None,
+                    "employee": att_data["employee_id"],
+                    "log_type": att_data["log_type"]
+                }
+            )
+
         # Download photo from orchestrator and save locally on client bench
         local_photo_url = att_data.get("photo_proof")
         remote_photo_url = att_data.get("photo_proof")
