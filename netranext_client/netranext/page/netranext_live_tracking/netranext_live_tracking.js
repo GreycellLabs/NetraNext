@@ -774,16 +774,25 @@
                 : format_time_12hr(t.start_time) + ' - Present';
 
             var card = $('<div class="trip-card' + (isSelected ? ' selected' : '') + (isOffline ? ' offline' : '') + '" data-id="' + id + '">' +
-                '<div class="trip-card-header" style="align-items: center; margin-bottom: 8px;">' +
-                '<div class="trip-card-emp" style="flex: 1; display: flex; align-items: center; gap: 8px;">' + 
-                '<span>' + (t.employee_name || t.employee) + '</span>' +
+                // Row 1: Name and Status Badge
+                '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
+                '<div class="trip-card-emp" style="flex: 1; font-weight: 700; font-size: 14px; color: var(--t-text); max-width: 75%; word-break: break-word;">' + 
+                (t.employee_name || t.employee) + 
+                '</div>' +
+                '<div style="flex-shrink: 0; margin-left: 8px;">' +
                 badgeHtml +
                 '</div>' +
-                '<div style="font-size: 12px; color: var(--t-text-muted); margin: 0 12px; font-weight: 500;">' +
+                '</div>' +
+                
+                // Row 2: Time Status and Distance
+                '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px;">' +
+                '<div style="color: var(--t-text-muted); font-weight: 500;">' +
                 timeStatusHtml +
                 '</div>' +
-                '<div class="trip-card-dist" style="margin-left: auto;">' + (t.distance_km || 0) + ' km</div>' +
+                '<div class="trip-card-dist" style="flex-shrink: 0; margin-left: 8px;">' + (t.distance_km || 0) + ' km</div>' +
                 '</div>' +
+                
+                // Card Body
                 '<div class="trip-card-body" style="gap: 4px;">' +
                 '<div style="font-size: 11px; display: flex; align-items: center; gap: 6px;">' +
                 '<span style="color: var(--t-success); font-size: 10px;">🟢</span>' +
