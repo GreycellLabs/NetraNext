@@ -220,9 +220,16 @@ def store_attendance(att_data):
         validate_employee_exists(att_data["employee_id"])
 
         # Prevent duplicate check-in/checkout log for the same employee on the same day
+        # Employee Checkin times are stored in UTC - convert the local day boundary
         from frappe.utils import get_datetime, nowdate
 
-        day_start = get_datetime(nowdate())
+        try:
+            import pytz
+            from frappe.utils import get_system_timezone
+            system_tz = pytz.timezone(get_system_timezone() or "UTC")
+            day_start = system_tz.localize(get_datetime(nowdate())).astimezone(pytz.utc).replace(tzinfo=None)
+        except Exception:
+            day_start = get_datetime(nowdate())
         if frappe.db.exists("Employee Checkin", {
             "employee": att_data["employee_id"],
             "log_type": att_data["log_type"],

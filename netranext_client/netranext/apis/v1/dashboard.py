@@ -185,7 +185,7 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
             """
 
             attendance_records = frappe.db.sql(attendance_sql,
-                (f"{date_from} 00:00:00", f"{date_to} 23:59:59"),
+                (f"{db_date_from} 00:00:00", f"{db_date_to} 23:59:59"),
                 as_dict=True)
 
             for att in attendance_records:
