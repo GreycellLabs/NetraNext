@@ -41,7 +41,7 @@ def run():
     frappe.db.commit()
 
     try:
-        # 1. First Check-in (IN) at 09:00 AM
+        # 1. First Check-in (IN) at 09:00 AM (Should succeed)
         print("\n--- 1. Simulating first check-in (IN) at 09:00 AM ---")
         att_data_1 = {
             "employee_id": vraj_emp_id,
@@ -53,8 +53,19 @@ def run():
         assert res_1.get("status") == "success"
         assert res_1.get("data", {}).get("already_checked_in") is not True
 
-        # 2. First Check-out (OUT) at 05:00 PM
-        print("\n--- 2. Simulating first check-out (OUT) at 05:00 PM ---")
+        # 2. Consecutive Check-in (IN) at 09:05 AM (Should fail / be blocked)
+        print("\n--- 2. Simulating duplicate consecutive check-in (IN) at 09:05 AM ---")
+        att_data_dup_in = {
+            "employee_id": vraj_emp_id,
+            "time": "2026-08-18 09:05:00",
+            "log_type": "IN"
+        }
+        res_dup_in = store_attendance(att_data_dup_in)
+        print("Result Duplicate IN:", res_dup_in)
+        assert res_dup_in.get("data", {}).get("already_checked_in") is True, "Consecutive check-in was not blocked!"
+
+        # 3. First Check-out (OUT) at 05:00 PM (Should succeed)
+        print("\n--- 3. Simulating first check-out (OUT) at 05:00 PM ---")
         att_data_2 = {
             "employee_id": vraj_emp_id,
             "time": "2026-08-18 17:00:00",
@@ -65,8 +76,19 @@ def run():
         assert res_2.get("status") == "success"
         assert res_2.get("data", {}).get("already_checked_in") is not True
 
-        # 3. Second Check-in (IN) at 06:00 PM (Should succeed!)
-        print("\n--- 3. Simulating second check-in (IN) at 06:00 PM ---")
+        # 4. Consecutive Check-out (OUT) at 05:05 PM (Should fail / be blocked)
+        print("\n--- 4. Simulating duplicate consecutive check-out (OUT) at 05:05 PM ---")
+        att_data_dup_out = {
+            "employee_id": vraj_emp_id,
+            "time": "2026-08-18 17:05:00",
+            "log_type": "OUT"
+        }
+        res_dup_out = store_attendance(att_data_dup_out)
+        print("Result Duplicate OUT:", res_dup_out)
+        assert res_dup_out.get("data", {}).get("already_checked_in") is True, "Consecutive check-out was not blocked!"
+
+        # 5. Second Check-in (IN) at 06:00 PM (Should succeed!)
+        print("\n--- 5. Simulating second check-in (IN) at 06:00 PM ---")
         att_data_3 = {
             "employee_id": vraj_emp_id,
             "time": "2026-08-18 18:00:00",
@@ -76,17 +98,6 @@ def run():
         print("Result 3:", res_3)
         assert res_3.get("status") == "success"
         assert res_3.get("data", {}).get("already_checked_in") is not True, "Second check-in was incorrectly blocked!"
-
-        # 4. Duplicate Check-in (IN) at 06:00:30 PM (Should be skipped as duplicate)
-        print("\n--- 4. Simulating duplicate check-in (IN) at 06:00:30 PM (within 2-min threshold) ---")
-        att_data_4 = {
-            "employee_id": vraj_emp_id,
-            "time": "2026-08-18 18:00:30",
-            "log_type": "IN"
-        }
-        res_4 = store_attendance(att_data_4)
-        print("Result 4:", res_4)
-        assert res_4.get("data", {}).get("already_checked_in") is True, "Duplicate check-in within 2 minutes was not blocked!"
 
         # Retrieve and verify database records
         checkins = frappe.get_all("Employee Checkin", filters={"employee": vraj_emp_id}, fields=["name", "log_type", "time"], order_by="time asc")
@@ -101,8 +112,8 @@ def run():
 
         print("\n==================================================")
         print("SUCCESS: TEST PASSED PROPERLY!")
-        print("- Multiple check-ins/outs on the same day are fully allowed.")
-        print("- Duplicate check-ins within 2 minutes are successfully blocked.")
+        print("- Alternating check-ins/outs on the same day are fully allowed.")
+        print("- Consecutive check-ins (IN -> IN) and check-outs (OUT -> OUT) are successfully blocked.")
         print("==================================================")
 
     except AssertionError as e:

@@ -218,27 +218,36 @@ def store_attendance(att_data):
 
         # Check if employee exists
         validate_employee_exists(att_data["employee_id"])
+        # Prevent consecutive duplicate check-ins or check-outs today
+        from frappe.utils import get_datetime, nowdate
+        try:
+            import pytz
+            from frappe.utils import get_system_timezone
+            system_tz = pytz.timezone(get_system_timezone() or "UTC")
+            day_start = system_tz.localize(get_datetime(nowdate())).astimezone(pytz.utc).replace(tzinfo=None)
+        except Exception:
+            day_start = get_datetime(nowdate())
 
-        # Prevent duplicate check-in/checkout log for the same employee within 2 minutes of the same timestamp
-        from frappe.utils import get_datetime
-        from datetime import timedelta
+        latest_checkin = frappe.db.get_all(
+            "Employee Checkin",
+            filters={
+                "employee": att_data["employee_id"],
+                "time": [">=", day_start]
+            },
+            fields=["log_type"],
+            order_by="time desc",
+            limit=1
+        )
 
-        checkin_time = get_datetime(att_data["time"])
-        time_threshold_start = checkin_time - timedelta(minutes=2)
-        time_threshold_end = checkin_time + timedelta(minutes=2)
-
-        if frappe.db.exists("Employee Checkin", {
-            "employee": att_data["employee_id"],
-            "log_type": att_data["log_type"],
-            "time": ["between", [time_threshold_start, time_threshold_end]],
-        }):
+        if latest_checkin and latest_checkin[0].log_type.upper() == att_data["log_type"].upper():
             employee_name = frappe.db.get_value("Employee", att_data["employee_id"], "employee_name") or att_data["employee_id"]
+            action_word = "checked in" if att_data["log_type"].upper() == "IN" else "checked out"
             tenant_bench_logger.info(
-                f"Skipped duplicate attendance for {att_data['employee_id']} ({att_data['log_type']}) - already exists within 2 minutes",
+                f"Skipped duplicate attendance for {att_data['employee_id']} ({att_data['log_type']}) - already {action_word} today",
                 "ATTENDANCE_SYNC"
             )
             return create_success_response(
-                message=f"{employee_name} is already checked in",
+                message=f"{employee_name} is already {action_word}",
                 data={
                     "already_checked_in": True,
                     "checkin_id": None,
@@ -246,7 +255,6 @@ def store_attendance(att_data):
                     "log_type": att_data["log_type"]
                 }
             )
-
         # Download photo from orchestrator and save locally on client bench
         local_photo_url = att_data.get("photo_proof")
         remote_photo_url = att_data.get("photo_proof")
