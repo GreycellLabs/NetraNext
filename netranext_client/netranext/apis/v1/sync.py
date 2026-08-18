@@ -219,25 +219,22 @@ def store_attendance(att_data):
         # Check if employee exists
         validate_employee_exists(att_data["employee_id"])
 
-        # Prevent duplicate check-in/checkout log for the same employee on the same day
-        # Employee Checkin times are stored in UTC - convert the local day boundary
-        from frappe.utils import get_datetime, nowdate
+        # Prevent duplicate check-in/checkout log for the same employee within 2 minutes of the same timestamp
+        from frappe.utils import get_datetime
+        from datetime import timedelta
 
-        try:
-            import pytz
-            from frappe.utils import get_system_timezone
-            system_tz = pytz.timezone(get_system_timezone() or "UTC")
-            day_start = system_tz.localize(get_datetime(nowdate())).astimezone(pytz.utc).replace(tzinfo=None)
-        except Exception:
-            day_start = get_datetime(nowdate())
+        checkin_time = get_datetime(att_data["time"])
+        time_threshold_start = checkin_time - timedelta(minutes=2)
+        time_threshold_end = checkin_time + timedelta(minutes=2)
+
         if frappe.db.exists("Employee Checkin", {
             "employee": att_data["employee_id"],
             "log_type": att_data["log_type"],
-            "time": [">=", day_start],
+            "time": ["between", [time_threshold_start, time_threshold_end]],
         }):
             employee_name = frappe.db.get_value("Employee", att_data["employee_id"], "employee_name") or att_data["employee_id"]
             tenant_bench_logger.info(
-                f"Skipped duplicate attendance for {att_data['employee_id']} ({att_data['log_type']}) - already exists today",
+                f"Skipped duplicate attendance for {att_data['employee_id']} ({att_data['log_type']}) - already exists within 2 minutes",
                 "ATTENDANCE_SYNC"
             )
             return create_success_response(
