@@ -20,6 +20,9 @@
   },
   {
    "role": "HR User"
+  },
+  {
+   "role": "All"
   }
  ],
  "script": "netranext_dashboard.js",
