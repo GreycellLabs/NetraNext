@@ -852,7 +852,7 @@ def get_employee_checkins(employee_id=None, from_date=None, to_date=None, limit=
                 "location_address", "photo_proof", "creation", "modified",
                 "custom_face_status", "custom_location_status"
             ],
-            order_by="time asc",
+            order_by="time desc",
             limit=int(limit),
             ignore_permissions=True
         )
