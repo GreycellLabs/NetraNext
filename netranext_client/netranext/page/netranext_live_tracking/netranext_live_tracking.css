@@ -32,6 +32,82 @@
     display: none !important;
 }
 
+/* Frappe Filter Pill UX Styling */
+.top-filter-bar {
+    background: #ffffff;
+    padding: 10px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    z-index: 10;
+}
+
+.top-filter-bar .filter-item {
+    display: flex;
+    align-items: center;
+}
+
+.top-filter-bar .j-input {
+    background-color: #f3f4f7;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    outline: none;
+    transition: all 0.15s ease-in-out;
+    height: 34px;
+    box-shadow: none;
+}
+
+.top-filter-bar .j-input::placeholder {
+    color: #8d99a6;
+    font-weight: 400;
+}
+
+.top-filter-bar .j-input:hover {
+    background-color: #eaecef;
+    border-color: #e2e8f0;
+}
+
+.top-filter-bar .j-input:focus {
+    background-color: #ffffff;
+    border-color: #cbd5e1;
+    box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.15);
+}
+
+.top-filter-bar select.j-input {
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 28px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%6B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+}
+
+.top-filter-bar .frappe-clear-btn {
+    background-color: #f3f4f7;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 14px;
+    height: 34px;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+}
+
+.top-filter-bar .frappe-clear-btn:hover {
+    background-color: #fee2e2;
+    color: #ef4444;
+}
+
 .filter-bar {
     background: #ffffff;
     padding: 12px 16px;

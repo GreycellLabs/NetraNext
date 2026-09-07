@@ -14,7 +14,11 @@
     };
 
     var currentFilters = {
-        employee: ''
+        employee: '',
+        search: '',
+        status: '',
+        department: '',
+        date: ''
     };
 
     var liveTrackingInterval = null;
@@ -174,16 +178,32 @@
 
         var html = `
             <div class="trip-map-view">
+                <!-- Top Horizontal Filter Bar (Frappe Filter Pill Style) -->
+                <div class="top-filter-bar">
+                    <div class="filter-item" style="min-width: 160px;">
+                        <input type="text" id="employee-search-filter" class="j-input" placeholder="Employee" style="width: 100%;" />
+                    </div>
+                    <div class="filter-item">
+                        <select id="status-filter" class="j-input" style="min-width: 130px;">
+                            <option value="">Status</option>
+                            <option value="live">Live</option>
+                            <option value="offline">Offline</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <select id="department-filter" class="j-input" style="min-width: 150px;">
+                            <option value="">Department</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <input type="date" id="date-filter" class="j-input" style="min-width: 140px;" />
+                    </div>
+                    <button class="frappe-clear-btn" id="clear-filters">Clear</button>
+                </div>
+
                 <div class="map-view-body">
                     <!-- Sidebar -->
                     <div class="trip-sidebar">
-                        <div class="filter-bar">
-                            <select id="employee-filter" class="j-input" style="flex: 1; min-width: 0;">
-                                <option value="">All Employees</option>
-                            </select>
-                            <button class="j-btn" id="clear-filters" style="padding: 8px 12px;">Clear</button>
-                        </div>
-
                         <div class="trip-list-container" id="trip-list-content">
                             <div style="text-align: center; padding: 20px;">
                                 <div class="loader-spinner" style="margin: 0 auto 16px;"></div>
@@ -221,6 +241,11 @@
         mapViewData.markers = {};
 
         currentFilters.employee = '';
+        currentFilters.search = '';
+        currentFilters.status = '';
+        currentFilters.department = '';
+        currentFilters.date = get_today_date();
+        pageWrapper.find('#date-filter').val(currentFilters.date);
 
         // Set up Event Handlers
         setup_event_handlers();
@@ -296,7 +321,7 @@
     }
 
     // Load real active trip data from API
-    function load_trip_data(silent) {
+    function load_trip_data(silent, selectedDate) {
         if (!silent) {
             pageWrapper.find('#trip-list-content').html( /* nosemgrep */ `
                 <div style="text-align: center; padding: 20px;">
@@ -306,23 +331,26 @@
             `);
         }
 
-        var todayStr = get_today_date();
+        var dateQuery = selectedDate || currentFilters.date || get_today_date();
 
         frappe.call({
             method: "netranext_client.netranext.apis.v1.dashboard.get_dashboard_data",
             args: {
-                date_from: todayStr,
-                date_to: todayStr
+                date_from: dateQuery,
+                date_to: dateQuery
             },
             callback: function(response) {
                 if (response.message && response.message.status === 'success') {
                     var data = response.message.data || {};
                     var allTrips = data.journeys || [];
 
-                    // Filter for 'In Progress' trips only
-                    var activeTrips = allTrips.filter(function(t) {
-                        return t.status === 'In Progress';
-                    });
+                    var activeTrips = allTrips;
+                    if (dateQuery === get_today_date()) {
+                        activeTrips = allTrips.filter(function(t) {
+                            return t.status === 'In Progress' || t.is_online !== undefined;
+                        });
+                        if (activeTrips.length === 0) activeTrips = allTrips;
+                    }
 
                     // Enrich active trips with coordinates for map display
                     activeTrips.forEach(function(trip) {
@@ -330,7 +358,7 @@
                     });
 
                     mapViewData.trips = activeTrips;
-                    populate_employee_filter();
+                    populate_department_filter();
                     update_view();
 
                     // If a trip was previously selected and is still active, pan to its latest point
@@ -431,25 +459,26 @@
         pageWrapper.find('#trip-list-content').html( /* nosemgrep */ errorHtml);
     }
 
-    function populate_employee_filter() {
-        var employees = {};
+    function populate_department_filter() {
+        var departments = {};
         mapViewData.trips.forEach(function (t) {
-            var empId = t.employee || t.user_id;
-            if (empId) {
-                employees[empId] = t.employee_name || empId;
+            if (t.department) {
+                departments[t.department] = t.department;
             }
         });
 
-        var select = pageWrapper.find('#employee-filter');
-        var currentVal = select.val();
-        select.find('option:not(:first)').remove();
+        var select = pageWrapper.find('#department-filter');
+        if (select.length) {
+            var currentVal = select.val();
+            select.find('option:not(:first)').remove();
 
-        Object.keys(employees).sort().forEach(function (empId) {
-            select.append( /* nosemgrep */ '<option value="' + empId + '">' + employees[empId] + '</option>');
-        });
+            Object.keys(departments).sort().forEach(function (dept) {
+                select.append( /* nosemgrep */ '<option value="' + dept + '">' + departments[dept] + '</option>');
+            });
 
-        if (currentVal) {
-            select.val(currentVal);
+            if (currentVal) {
+                select.val(currentVal);
+            }
         }
     }
 
@@ -686,15 +715,40 @@
     }
 
     function setup_event_handlers() {
-        pageWrapper.find('#employee-filter').on('change', function() {
-            currentFilters.employee = $(this).val();
+        pageWrapper.find('#employee-search-filter').on('input keyup search', function() {
+            currentFilters.search = $(this).val();
             update_view();
         });
 
-        pageWrapper.find('#clear-filters').on('click', function() {
-            pageWrapper.find('#employee-filter').val('');
-            currentFilters.employee = '';
+        pageWrapper.find('#status-filter').on('change', function() {
+            currentFilters.status = $(this).val();
             update_view();
+        });
+
+        pageWrapper.find('#department-filter').on('change', function() {
+            currentFilters.department = $(this).val();
+            update_view();
+        });
+
+        pageWrapper.find('#date-filter').on('change', function() {
+            var selectedDate = $(this).val();
+            currentFilters.date = selectedDate;
+            load_trip_data(false, selectedDate);
+        });
+
+        pageWrapper.find('#clear-filters').on('click', function() {
+            var todayStr = get_today_date();
+            currentFilters.search = '';
+            currentFilters.status = '';
+            currentFilters.department = '';
+            currentFilters.date = todayStr;
+
+            pageWrapper.find('#employee-search-filter').val('');
+            pageWrapper.find('#status-filter').val('');
+            pageWrapper.find('#department-filter').val('');
+            pageWrapper.find('#date-filter').val(todayStr);
+
+            load_trip_data(false, todayStr);
         });
 
         pageWrapper.find('#fit-all-routes').on('click', function() {
@@ -738,8 +792,30 @@
         var f = currentFilters;
 
         return trips.filter(function (t) {
-            var matchEmp = !f.employee || t.employee === f.employee || t.user_id === f.employee;
-            return matchEmp;
+            // Employee search (matches name, employee ID, or user_id)
+            var matchEmp = true;
+            if (f.search) {
+                var q = f.search.toLowerCase().trim();
+                var empName = (t.employee_name || '').toLowerCase();
+                var empId = (t.employee || t.user_id || '').toLowerCase();
+                matchEmp = empName.includes(q) || empId.includes(q);
+            }
+
+            // Status filter: Live vs Offline
+            var matchStatus = true;
+            if (f.status === 'live') {
+                matchStatus = t.is_online !== false;
+            } else if (f.status === 'offline') {
+                matchStatus = t.is_online === false;
+            }
+
+            // Department filter
+            var matchDept = true;
+            if (f.department) {
+                matchDept = t.department === f.department;
+            }
+
+            return matchEmp && matchStatus && matchDept;
         });
     }
 
