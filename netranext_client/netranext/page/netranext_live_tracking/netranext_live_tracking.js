@@ -359,10 +359,10 @@
 
                     mapViewData.trips = activeTrips;
                     populate_department_filter();
-                    update_view();
+                    update_view(silent);
 
-                    // If a trip was previously selected and is still active, pan to its latest point
-                    if (mapViewData.selectedId && mapViewData.layers[mapViewData.selectedId]) {
+                    // If a trip was previously selected and is still active, pan to its latest point only on manual actions
+                    if (!silent && mapViewData.selectedId && mapViewData.layers[mapViewData.selectedId]) {
                         var polyline = mapViewData.layers[mapViewData.selectedId];
                         var latlngs = polyline.getLatLngs();
                         if (latlngs.length > 0 && mapViewData.map) {
@@ -423,9 +423,9 @@
         return coords;
     }
 
-    function update_view() {
-        render_trip_list();
-        render_trips_on_map();
+    function update_view(isAutoUpdate) {
+        render_trip_list(isAutoUpdate);
+        render_trips_on_map(isAutoUpdate);
         update_stats();
 
         if (mapViewData.map) {
@@ -506,25 +506,12 @@
         }
     }
 
-    function render_trips_on_map() {
+    function render_trips_on_map(isAutoUpdate) {
         if (!mapViewData.map) return;
-
-        // Clear existing layers
-        Object.values(mapViewData.layers).forEach(function(layer) {
-            mapViewData.map.removeLayer(layer);
-        });
-
-        Object.values(mapViewData.markers).forEach(function(markers) {
-            markers.forEach(function(m) {
-                mapViewData.map.removeLayer(m);
-            });
-        });
-
-        mapViewData.layers = {};
-        mapViewData.markers = {};
 
         var trips = get_filtered_trips();
         var allPoints = [];
+        var activeTripIds = {};
 
         // Group trips by coordinate to detect overlapping locations
         var coordsGroups = {};
@@ -546,6 +533,8 @@
 
             group.forEach(function (t, index) {
                 var id = t.name || t.trip_id;
+                activeTripIds[id] = true;
+
                 var coords = t.coordinates;
                 var currentPos = [coords[coords.length - 1][0], coords[coords.length - 1][1]];
 
@@ -559,42 +548,85 @@
                 }
 
                 var isSelected = mapViewData.selectedId === id;
-                var color = isSelected ? mapViewData.selectedColor : mapViewData.unselectedColor;
                 var isOffline = t.is_online === false;
-                
-                // Highlight selected marker: higher z-index so it stays on top of overlapping markers
-                var markerOptions = { 
-                    icon: create_live_marker_icon(isOffline, isSelected)
-                };
-                if (isSelected) {
-                    markerOptions.zIndexOffset = 1000;
-                }
-                
-                var endMarker = L.marker(currentPos, markerOptions)
-                    .addTo(mapViewData.map);
-                
-                // Bind name tooltip permanently for all markers (no popups), applying selected styling if selected
                 var tooltipClass = isSelected ? 'employee-map-tooltip selected-tooltip' : 'employee-map-tooltip';
-                endMarker.bindTooltip(t.employee_name || t.employee, {
-                    permanent: true,
-                    direction: 'top',
-                    offset: [0, -10],
-                    className: tooltipClass
-                });
+                var empName = t.employee_name || t.employee;
 
-                // Click on the live marker to select the trip
-                endMarker.on('click', function(e) {
-                    L.DomEvent.stopPropagation(e);
-                    select_trip(id, false);
-                });
-
-                mapViewData.markers[id] = [endMarker];
                 allPoints.push(currentPos);
+
+                // Update existing marker in-place without removing from map!
+                var existingMarkers = mapViewData.markers[id];
+                if (existingMarkers && existingMarkers.length > 0) {
+                    var existingMarker = existingMarkers[0];
+
+                    // Smoothly set new position
+                    existingMarker.setLatLng(currentPos);
+
+                    // Update icon if selection or status changed
+                    existingMarker.setIcon(create_live_marker_icon(isOffline, isSelected));
+                    if (isSelected) {
+                        existingMarker.setZIndexOffset(1000);
+                    } else {
+                        existingMarker.setZIndexOffset(0);
+                    }
+
+                    // Update tooltip
+                    var tooltip = existingMarker.getTooltip();
+                    if (tooltip) {
+                        if (tooltip.getContent() !== empName) {
+                            existingMarker.setTooltipContent(empName);
+                        }
+                    } else {
+                        existingMarker.bindTooltip(empName, {
+                            permanent: true,
+                            direction: 'top',
+                            offset: [0, -10],
+                            className: tooltipClass
+                        });
+                    }
+                } else {
+                    // Create new marker for new trip
+                    var markerOptions = { 
+                        icon: create_live_marker_icon(isOffline, isSelected)
+                    };
+                    if (isSelected) {
+                        markerOptions.zIndexOffset = 1000;
+                    }
+                    
+                    var endMarker = L.marker(currentPos, markerOptions)
+                        .addTo(mapViewData.map);
+                    
+                    endMarker.bindTooltip(empName, {
+                        permanent: true,
+                        direction: 'top',
+                        offset: [0, -10],
+                        className: tooltipClass
+                    });
+
+                    // Click on the live marker to select the trip
+                    endMarker.on('click', function(e) {
+                        L.DomEvent.stopPropagation(e);
+                        select_trip(id, false);
+                    });
+
+                    mapViewData.markers[id] = [endMarker];
+                }
             });
         });
 
-        // Zoom to fit all active live positions only if no trip is currently selected
-        if (allPoints.length > 0 && !mapViewData.selectedId) {
+        // Remove markers for trips that no longer exist or are filtered out
+        Object.keys(mapViewData.markers).forEach(function(id) {
+            if (!activeTripIds[id]) {
+                mapViewData.markers[id].forEach(function(m) {
+                    mapViewData.map.removeLayer(m);
+                });
+                delete mapViewData.markers[id];
+            }
+        });
+
+        // CRITICAL: DO NOT adjust map camera view/bounds during automatic 10s background updates (isAutoUpdate === true)!
+        // Only adjust camera on initial load or manual user filter action (isAutoUpdate === false).
+        if (!isAutoUpdate && allPoints.length > 0 && !mapViewData.selectedId) {
             if (allPoints.length === 1) {
                 mapViewData.map.setView(allPoints[0], 15);
             } else {
@@ -819,13 +851,12 @@
         });
     }
 
-    function render_trip_list() {
+    function render_trip_list(isAutoUpdate) {
         var trips = get_filtered_trips();
         var container = pageWrapper.find('#trip-list-content');
-        container.empty();
 
         if (trips.length === 0) {
-            container.append( /* nosemgrep */ 
+            container.empty().append( /* nosemgrep */ 
                 '<div style="text-align: center; padding: 48px 20px; color: var(--t-text-muted);">' +
                 '<div style="font-weight: 600;">No active trips right now.</div>' +
                 '<div style="font-size: 12px; margin-top: 4px;">Live updates are automatically running.</div>' +
@@ -834,14 +865,22 @@
             return;
         }
 
+        // Remove empty state placeholder if present
+        if (container.find('> div:contains("No active trips")').length) {
+            container.empty();
+        }
+
+        var activeTripIds = {};
+
         trips.forEach(function(t) {
             var id = t.name || t.trip_id;
+            activeTripIds[id] = true;
+
             var isSelected = mapViewData.selectedId === id;
-            
             var startLoc = t.start_location || 'Start point';
             var currentLoc = (t.coordinates && t.coordinates.length > 0) ? t.coordinates[t.coordinates.length - 1].join(', ') : 'Unknown location';
-
             var isOffline = t.is_online === false;
+
             var badgeHtml = isOffline 
                 ? '<span class="card-live-badge offline"><span class="card-live-dot offline"></span>Offline</span>'
                 : '<span class="card-live-badge"><span class="card-live-dot"></span>Live</span>';
@@ -849,44 +888,64 @@
                 ? '<span style="color: var(--t-danger); font-weight: 600;">Last update: ' + format_time_12hr(t.last_update_time || t.modified) + '</span>'
                 : format_time_12hr(t.start_time) + ' - Present';
 
-            var card = $('<div class="trip-card' + (isSelected ? ' selected' : '') + (isOffline ? ' offline' : '') + '" data-id="' + id + '">' +
-                // Row 1: Name and Status Badge
-                '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
-                '<div class="trip-card-emp" style="flex: 1; font-weight: 700; font-size: 14px; color: var(--t-text); max-width: 75%; word-break: break-word;">' + 
-                (t.employee_name || t.employee) + 
-                '</div>' +
-                '<div style="flex-shrink: 0; margin-left: 8px;">' +
-                badgeHtml +
-                '</div>' +
-                '</div>' +
-                
-                // Row 2: Time Status and Distance
-                '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px;">' +
-                '<div style="color: var(--t-text-muted); font-weight: 500;">' +
-                timeStatusHtml +
-                '</div>' +
-                '<div class="trip-card-dist" style="flex-shrink: 0; margin-left: 8px;">' + (t.distance_km || 0) + ' km</div>' +
-                '</div>' +
-                
-                // Card Body
-                '<div class="trip-card-body" style="gap: 4px;">' +
-                '<div style="font-size: 11px; display: flex; align-items: center; gap: 6px;">' +
-                '<span style="color: var(--t-success); font-size: 10px;">🟢</span>' +
-                '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + format_location_display(startLoc) + '</span>' +
-                '</div>' +
-                '<div style="font-size: 11px; display: flex; align-items: center; gap: 6px;">' +
-                '<span style="color: var(--t-primary); font-size: 10px;">🔵</span>' +
-                '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + format_location_display(currentLoc) + '</span>' +
-                '</div>' +
-                '</div>' +
-                '</div>'
-            );
+            var existingCard = container.find('.trip-card[data-id="' + id + '"]');
 
-            card.on('click', function() {
-                select_trip(id, true);
-            });
+            if (existingCard.length) {
+                // Update DOM elements in-place to eliminate flickering
+                existingCard.toggleClass('selected', isSelected);
+                existingCard.toggleClass('offline', isOffline);
+                existingCard.find('.trip-card-emp').text(t.employee_name || t.employee);
+                existingCard.find('.trip-card-dist').text((t.distance_km || 0) + ' km');
+                existingCard.find('.card-live-badge').parent().html(badgeHtml);
+                existingCard.find('.trip-card-body').prev().find('> div:first').html(timeStatusHtml);
+                existingCard.find('.trip-card-body > div:first > span:last').html(format_location_display(startLoc));
+                existingCard.find('.trip-card-body > div:last > span:last').html(format_location_display(currentLoc));
+            } else {
+                // Render new trip card
+                var card = $('<div class="trip-card' + (isSelected ? ' selected' : '') + (isOffline ? ' offline' : '') + '" data-id="' + id + '">' +
+                    '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
+                    '<div class="trip-card-emp" style="flex: 1; font-weight: 700; font-size: 14px; color: var(--t-text); max-width: 75%; word-break: break-word;">' + 
+                    (t.employee_name || t.employee) + 
+                    '</div>' +
+                    '<div style="flex-shrink: 0; margin-left: 8px;">' +
+                    badgeHtml +
+                    '</div>' +
+                    '</div>' +
+                    
+                    '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px;">' +
+                    '<div style="color: var(--t-text-muted); font-weight: 500;">' +
+                    timeStatusHtml +
+                    '</div>' +
+                    '<div class="trip-card-dist" style="flex-shrink: 0; margin-left: 8px;">' + (t.distance_km || 0) + ' km</div>' +
+                    '</div>' +
+                    
+                    '<div class="trip-card-body" style="gap: 4px;">' +
+                    '<div style="font-size: 11px; display: flex; align-items: center; gap: 6px;">' +
+                    '<span style="color: var(--t-success); font-size: 10px;">🟢</span>' +
+                    '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + format_location_display(startLoc) + '</span>' +
+                    '</div>' +
+                    '<div style="font-size: 11px; display: flex; align-items: center; gap: 6px;">' +
+                    '<span style="color: var(--t-primary); font-size: 10px;">🔵</span>' +
+                    '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + format_location_display(currentLoc) + '</span>' +
+                    '</div>' +
+                    '</div>' +
+                    '</div>'
+                );
 
-            container.append( /* nosemgrep */ card);
+                card.on('click', function() {
+                    select_trip(id, true);
+                });
+
+                container.append(card);
+            }
+        });
+
+        // Remove cards for trips that are no longer active
+        container.find('.trip-card').each(function() {
+            var cardId = $(this).attr('data-id');
+            if (!activeTripIds[cardId]) {
+                $(this).remove();
+            }
         });
     }
 
