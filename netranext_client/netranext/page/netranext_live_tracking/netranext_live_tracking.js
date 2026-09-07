@@ -347,9 +347,8 @@
                     var activeTrips = allTrips;
                     if (dateQuery === get_today_date()) {
                         activeTrips = allTrips.filter(function(t) {
-                            return t.status === 'In Progress' || t.is_online !== undefined;
+                            return t.status === 'In Progress';
                         });
-                        if (activeTrips.length === 0) activeTrips = allTrips;
                     }
 
                     // Enrich active trips with coordinates for map display
@@ -854,6 +853,9 @@
     function render_trip_list(isAutoUpdate) {
         var trips = get_filtered_trips();
         var container = pageWrapper.find('#trip-list-content');
+
+        // Always remove loading spinner once data arrives
+        container.find('.loader-spinner').parent().remove();
 
         if (trips.length === 0) {
             container.empty().append( /* nosemgrep */ 
