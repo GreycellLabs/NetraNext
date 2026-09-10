@@ -14,25 +14,38 @@ def get_context(context):
 
 
 @frappe.whitelist()
-def get_all_trips_summary(employee=None, status=None, date=None, limit=100):
+def get_all_trips_summary(employee=None, status=None, date=None, search=None, limit=100):
     """
-    Fetch a list of all NetraNext Journey records for the list view.
+    Fetch a list of all NetraNext Journey records for the list view with filtering.
     Format columns to match standard Frappe DocType List View.
     """
     if not frappe.db.exists("DocType", "NetraNext Journey"):
         return []
 
     filters = {}
-    if employee:
-        filters["employee"] = employee
-    if status:
-        filters["status"] = status
+    or_filters = []
+    if employee and str(employee).strip():
+        filters["employee"] = ["like", f"%{str(employee).strip()}%"]
+    if status and str(status).strip():
+        filters["status"] = str(status).strip()
+    if date and str(date).strip():
+        d_str = str(date).strip()
+        filters["start_time"] = ["between", [f"{d_str} 00:00:00", f"{d_str} 23:59:59"]]
+
+    if search and str(search).strip():
+        s = f"%{str(search).strip()}%"
+        or_filters = [
+            ["name", "like", s],
+            ["employee", "like", s],
+            ["journey_name", "like", s]
+        ]
 
     limit = int(limit) if limit else 100
 
     journeys = frappe.get_all(
         "NetraNext Journey",
-        filters=filters,
+        filters=filters if filters else None,
+        or_filters=or_filters if or_filters else None,
         fields=[
             "name",
             "journey_name",
@@ -72,10 +85,10 @@ def get_all_trips_summary(employee=None, status=None, date=None, limit=100):
         if dur_sec < 60:
             j["duration_formatted"] = "0 min"
         elif dur_sec < 3600:
-            j["duration_formatted"] = f"{dur_sec // 60} min"
+            j["duration_formatted"] = f"{int(dur_sec // 60)} min"
         else:
-            hours = dur_sec // 3600
-            mins = (dur_sec % 3600) // 60
+            hours = int(dur_sec // 3600)
+            mins = int((dur_sec % 3600) // 60)
             j["duration_formatted"] = f"{hours}h {mins}m" if mins > 0 else f"{hours}h"
 
         # Format Time Ago (e.g. 4 h, 1 d, 1 w)
@@ -83,7 +96,8 @@ def get_all_trips_summary(employee=None, status=None, date=None, limit=100):
         if j.creation:
             try:
                 c_dt = j.creation if isinstance(j.creation, datetime) else datetime.fromisoformat(str(j.creation).replace("Z", ""))
-                diff = now - c_dt
+                c_dt_naive = c_dt.replace(tzinfo=None) if hasattr(c_dt, 'tzinfo') and c_dt.tzinfo else c_dt
+                diff = now - c_dt_naive
                 days = diff.days
                 secs = diff.seconds
                 if days == 0:
@@ -181,7 +195,7 @@ def get_trip_telemetry_details(trip_id=None):
     timeline_events.append({
         "timestamp": start_time_str,
         "type": "TRIP_START",
-        "title": "🚀 Trip Started",
+        "title": "Trip Started",
         "details": f"Started at {doc.start_location or 'Initial Location'}",
         "icon": "fa-play-circle"
     })
@@ -196,7 +210,7 @@ def get_trip_telemetry_details(trip_id=None):
             timeline_events.append({
                 "timestamp": ts,
                 "type": "NETWORK_OFFLINE",
-                "title": "⚠️ Device Went Offline",
+                "title": "Device Went Offline",
                 "details": "Mobile internet connection dropped. GPS satellite tracking continued locally.",
                 "icon": "fa-wifi-slash"
             })
@@ -204,7 +218,7 @@ def get_trip_telemetry_details(trip_id=None):
             timeline_events.append({
                 "timestamp": ts,
                 "type": "NETWORK_ONLINE",
-                "title": "🌐 Network Reconnected",
+                "title": "Network Reconnected",
                 "details": f"Connection restored via {net_ev.get('type', 'Mobile/Wi-Fi')}.",
                 "icon": "fa-wifi"
             })
@@ -225,7 +239,7 @@ def get_trip_telemetry_details(trip_id=None):
         timeline_events.append({
             "timestamp": end_time_str,
             "type": "TRIP_END",
-            "title": "🛑 Trip Ended",
+            "title": "Trip Ended",
             "details": f"End Reason: {human_end_reason}",
             "icon": "fa-flag-checkered"
         })

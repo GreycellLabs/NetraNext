@@ -10,12 +10,39 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         
         <!-- VIEW 1: ALL TRIPS LIST VIEW (Matches Frappe DocType List View) -->
         <div id="view-all-trips-list">
+            
+            <!-- FILTER TOOLBAR -->
+            <div class="frappe-card filter-toolbar" style="padding: 12px 15px; margin-bottom: 15px; background: #ffffff; border-radius: 6px; border: 1px solid #e5e7eb; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <input type="text" id="filter-search" class="form-control input-sm" placeholder="Search ID, Employee, Journey..." style="height: 32px; font-size: 13px;">
+                </div>
+                <div style="width: 140px;">
+                    <select id="filter-status" class="form-control input-sm" style="height: 32px; font-size: 13px;">
+                        <option value="">All Statuses</option>
+                        <option value="Completed">Completed</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div style="width: 150px;">
+                    <input type="text" id="filter-employee" class="form-control input-sm" placeholder="Employee ID..." style="height: 32px; font-size: 13px;">
+                </div>
+                <div style="width: 140px;">
+                    <input type="date" id="filter-date" class="form-control input-sm" style="height: 32px; font-size: 13px;">
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <button class="btn btn-default btn-sm" id="btn-clear-filter" style="height: 32px; padding: 4px 12px;">
+                        Clear
+                    </button>
+                </div>
+            </div>
+
+            <!-- TRIPS TABLE CARD -->
             <div class="frappe-card" style="padding: 0; border-radius: 6px; overflow: hidden;">
                 <div class="table-responsive">
                     <table class="table table-bordered table-hover trips-table" style="margin-bottom: 0;">
                         <thead>
                             <tr style="background: #f9fafb;">
-                                <th style="width: 40px; text-align: center;"><input type="checkbox" id="select-all-trips"></th>
                                 <th>ID</th>
                                 <th>Status</th>
                                 <th>Employee</th>
@@ -26,17 +53,20 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                         </thead>
                         <tbody id="trips-table-body">
                             <tr>
-                                <td colspan="7" class="text-center text-muted" style="padding: 20px;">Loading trips list...</td>
+                                <td colspan="6" class="text-center text-muted" style="padding: 20px;">Loading trips list...</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-                <div class="list-pagination-bar" style="padding: 10px 15px; background: #f9fafb; border-top: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
-                    <span class="text-muted" style="font-size: 12px; font-weight: 600;">Rows:</span>
-                    <button class="btn btn-default btn-xs btn-limit active-limit" data-limit="20">20</button>
-                    <button class="btn btn-default btn-xs btn-limit" data-limit="100">100</button>
-                    <button class="btn btn-default btn-xs btn-limit" data-limit="500">500</button>
-                    <button class="btn btn-default btn-xs btn-limit" data-limit="2500">2500</button>
+                <div class="list-pagination-bar" style="padding: 10px 15px; background: #f9fafb; border-top: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="text-muted" style="font-size: 12px; font-weight: 600;">Rows:</span>
+                        <button class="btn btn-default btn-xs btn-limit active-limit" data-limit="20">20</button>
+                        <button class="btn btn-default btn-xs btn-limit" data-limit="100">100</button>
+                        <button class="btn btn-default btn-xs btn-limit" data-limit="500">500</button>
+                        <button class="btn btn-default btn-xs btn-limit" data-limit="2500">2500</button>
+                    </div>
+                    <span id="trips-count-badge" class="text-muted" style="font-size: 12px; font-weight: 500;">-</span>
                 </div>
             </div>
         </div>
@@ -46,16 +76,12 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             <div class="frappe-card">
                 <div class="trip-detail-header">
                     <div>
-                        <button class="btn btn-default btn-xs" id="btn-back-to-list">
-                            <i class="fa fa-arrow-left"></i> Back to All Trips List
+                        <button class="btn btn-default btn-xs" id="btn-back-to-list" title="Back to All Trips List" style="padding: 4px 10px;">
+                            <i class="fa fa-arrow-left"></i>
                         </button>
-                        <h3 id="single-trip-title" style="display: inline-block; margin-left: 12px; font-weight: 700; font-size: 18px;">Trip Details</h3>
+                        <span id="single-trip-title" style="display: inline-block; margin-left: 10px; font-weight: 500; font-size: 13px; color: #64748b;"></span>
                     </div>
                     <span id="single-trip-status-badge" class="indicator-pill green">Completed</span>
-                </div>
-
-                <div class="end-reason-callout" id="single-trip-end-reason-box">
-                    <strong>🛑 End Reason:</strong> <span id="single-trip-end-reason">User manually tapped End Journey</span>
                 </div>
 
                 <div class="metric-box-grid">
@@ -80,10 +106,10 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
 
             <!-- Two-Column Grid: Timeline Left, Map Right -->
             <div class="split-view-grid">
-                <!-- Left Panel: Chronological Event Timeline -->
+                <!-- Left Panel: Event Timeline -->
                 <div class="frappe-card">
-                    <h5 style="font-weight: 700; margin-bottom: 16px; font-size: 15px;">
-                        <i class="fa fa-history text-info"></i> Chronological Event Timeline
+                    <h5 style="font-weight: 600; margin-bottom: 12px; font-size: 13px; color: #334155;">
+                        <i class="fa fa-history text-info"></i> Event Timeline
                     </h5>
                     <ul class="timeline-container" id="single-trip-timeline-list">
                         <li class="timeline-event-item">
@@ -94,7 +120,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
 
                 <!-- Right Panel: Interactive Leaflet Map -->
                 <div class="frappe-card">
-                    <h5 style="font-weight: 700; margin-bottom: 16px; font-size: 15px;">
+                    <h5 style="font-weight: 600; margin-bottom: 12px; font-size: 13px; color: #334155;">
                         <i class="fa fa-map-marked-alt text-primary"></i> Route Path & Location Events
                     </h5>
                     <div id="single-trip-map-container" style="height: 440px; width: 100%; border-radius: 6px; border: 1px solid #e5e7eb;"></div>
@@ -110,7 +136,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
     page.trip_map = null;
     page.current_limit = 20;
 
-    // Helper to dynamically load Leaflet assets
+    // Helper to dynamically load Leaflet assets asynchronously when map is needed
     function ensureLeaflet(callback) {
         if (typeof L !== 'undefined') {
             callback();
@@ -130,13 +156,12 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                 $.getScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js')
                     .done(function() {
                         callback();
+                    })
+                    .fail(function() {
+                        callback(); // Continue even if map library fails to load
                     });
             });
     }
-
-    ensureLeaflet(function() {
-        page.init_page();
-    });
 
     page.init_page = function() {
         // Pagination Limit Buttons
@@ -144,6 +169,23 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             $('.btn-limit').removeClass('active-limit btn-primary').addClass('btn-default');
             $(this).removeClass('btn-default').addClass('btn-primary active-limit');
             page.current_limit = $(this).data('limit');
+            page.load_all_trips();
+        });
+
+        // Filter event listeners
+        $('#btn-clear-filter').on('click', function() {
+            $('#filter-search').val('');
+            $('#filter-status').val('');
+            $('#filter-employee').val('');
+            $('#filter-date').val('');
+            page.load_all_trips();
+        });
+
+        $('#filter-search, #filter-employee').on('input keyup', function() {
+            page.load_all_trips();
+        });
+
+        $('#filter-status, #filter-date').on('change', function() {
             page.load_all_trips();
         });
 
@@ -176,11 +218,15 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
     };
 
     page.load_all_trips = function() {
-        $('#trips-table-body').html('<tr><td colspan="8" class="text-center text-muted" style="padding: 20px;">Loading trips...</td></tr>');
+        $('#trips-table-body').html('<tr><td colspan="6" class="text-center text-muted" style="padding: 20px;">Loading trips...</td></tr>');
 
         frappe.call({
             method: 'netranext_client.netranext.page.netranext_trip_details.netranext_trip_details.get_all_trips_summary',
             args: {
+                search: $('#filter-search').val(),
+                status: $('#filter-status').val(),
+                employee: $('#filter-employee').val(),
+                date: $('#filter-date').val(),
                 limit: page.current_limit
             },
             callback: function(r) {
@@ -194,8 +240,10 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         var tbody = $('#trips-table-body');
         tbody.empty();
 
+        $('#trips-count-badge').text(trips.length + ' trip' + (trips.length === 1 ? '' : 's') + ' found');
+
         if (trips.length === 0) {
-            tbody.html('<tr><td colspan="7" class="text-center text-muted" style="padding: 20px;">No trip records found.</td></tr>');
+            tbody.html('<tr><td colspan="6" class="text-center text-muted" style="padding: 20px;">No matching trip records found.</td></tr>');
             return;
         }
 
@@ -206,11 +254,10 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
 
             var rowHtml = `
                 <tr class="clickable-trip-row" data-trip-id="${t.name}">
-                    <td style="text-align: center;"><input type="checkbox" onclick="event.stopPropagation();"></td>
-                    <td><strong style="color: #1f2937; cursor: pointer;">${t.name}</strong></td>
+                    <td><span style="font-weight: 500; color: #2563eb; cursor: pointer;">${t.name}</span></td>
                     <td>${statusBadge}</td>
-                    <td>${t.employee}</td>
-                    <td>${t.start_time_formatted}</td>
+                    <td>${t.employee || '-'}</td>
+                    <td>${t.start_time_formatted || '-'}</td>
                     <td>${t.distance_formatted}</td>
                     <td>${t.duration_formatted}</td>
                 </tr>
@@ -233,26 +280,33 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         $('#view-single-trip-details').show();
         page.set_title(__('Trip Details: ') + trip_id);
 
-        frappe.call({
-            method: 'netranext_client.netranext.page.netranext_trip_details.netranext_trip_details.get_trip_telemetry_details',
-            args: { trip_id: trip_id },
-            callback: function(r) {
-                if (r.message) {
-                    page.render_single_trip_details(r.message);
-                } else {
-                    frappe.msgprint(__('Unable to load details for trip ') + trip_id);
+        ensureLeaflet(function() {
+            frappe.call({
+                method: 'netranext_client.netranext.page.netranext_trip_details.netranext_trip_details.get_trip_telemetry_details',
+                args: { trip_id: trip_id },
+                callback: function(r) {
+                    if (r.message) {
+                        page.render_single_trip_details(r.message);
+                    } else {
+                        frappe.msgprint(__('Unable to load details for trip ') + trip_id);
+                    }
                 }
-            }
+            });
         });
     };
 
     page.render_single_trip_details = function(data) {
         // Fill Header & Metrics
-        $('#single-trip-title').text(data.trip_id + (data.flutter_journey_id ? ' (' + data.flutter_journey_id + ')' : ''));
+        var journeySubtitle = '';
+        if (data.journey_name && data.journey_name !== data.trip_id) {
+            journeySubtitle = data.journey_name;
+        } else if (data.flutter_journey_id && data.flutter_journey_id !== data.trip_id) {
+            journeySubtitle = data.flutter_journey_id;
+        }
+        $('#single-trip-title').text(journeySubtitle ? '(' + journeySubtitle + ')' : '');
         $('#single-trip-employee').text(data.employee_name || data.employee_id);
         $('#single-trip-date').text(data.journey_date || 'N/A');
         $('#single-trip-distance').text((data.distance_km ? data.distance_km.toFixed(2) : '0.00') + ' km');
-        $('#single-trip-end-reason').text(data.end_reason || 'N/A');
 
         // Status badge
         var badge = $('#single-trip-status-badge');
@@ -288,15 +342,30 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             return;
         }
 
+        function formatTimeOnly(ts) {
+            if (!ts || ts === 'N/A' || ts === 'In Progress') return ts || '';
+            var str = String(ts).trim();
+            if (str.includes(' ')) {
+                return str.split(' ')[1];
+            } else if (str.includes('T')) {
+                var tPart = str.split('T')[1];
+                return tPart.split('.')[0].replace('Z', '');
+            }
+            return str;
+        }
+
         events.forEach(function(ev) {
+            var timeOnly = formatTimeOnly(ev.timestamp);
             var itemHtml = `
                 <li class="timeline-event-item">
                     <div class="timeline-event-dot">
                         <i class="fa ${ev.icon}"></i>
                     </div>
                     <div class="timeline-event-box">
-                        <div class="timeline-event-time">${ev.timestamp}</div>
-                        <div class="timeline-event-title">${ev.title}</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span class="timeline-event-title" style="font-weight: 700; font-size: 14px; color: #111827;">${ev.title}</span>
+                            <span class="timeline-event-time" style="font-size: 12px; color: #6b7280; font-weight: 600;">${timeOnly}</span>
+                        </div>
                         <div class="timeline-event-desc">${ev.details}</div>
                     </div>
                 </li>
@@ -306,6 +375,11 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
     };
 
     page.render_map = function(gps_data) {
+        if (typeof L === 'undefined') {
+            $('#single-trip-map-container').html('<div style="padding: 20px; text-align: center; color: #6b7280;">Leaflet Map library not loaded.</div>');
+            return;
+        }
+
         if (page.trip_map) {
             page.trip_map.remove();
             page.trip_map = null;
@@ -349,4 +423,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             }
         }
     };
+
+    // Initialize page immediately
+    page.init_page();
 };
