@@ -1,7 +1,7 @@
 frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
     var page = frappe.ui.make_app_page({
         parent: wrapper,
-        title: __('Trip Details & Telemetry'),
+        title: __('Trip Details'),
         single_column: true
     });
 
@@ -41,7 +41,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             </div>
         </div>
 
-        <!-- VIEW 2: SINGLE TRIP TELEMETRY & MAP VIEW (Hidden by Default) -->
+        <!-- VIEW 2: SINGLE TRIP DETAILS & MAP VIEW (Hidden by Default) -->
         <div id="view-single-trip-details" style="display: none;">
             <div class="frappe-card">
                 <div class="trip-detail-header">
@@ -80,14 +80,14 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
 
             <!-- Two-Column Grid: Timeline Left, Map Right -->
             <div class="split-view-grid">
-                <!-- Left Panel: Chronological Telemetry Timeline -->
+                <!-- Left Panel: Chronological Event Timeline -->
                 <div class="frappe-card">
                     <h5 style="font-weight: 700; margin-bottom: 16px; font-size: 15px;">
-                        <i class="fa fa-history text-info"></i> Chronological Telemetry Timeline
+                        <i class="fa fa-history text-info"></i> Chronological Event Timeline
                     </h5>
                     <ul class="timeline-container" id="single-trip-timeline-list">
                         <li class="timeline-event-item">
-                            <div class="timeline-event-box">Loading telemetry...</div>
+                            <div class="timeline-event-box">Loading trip details...</div>
                         </li>
                     </ul>
                 </div>
@@ -171,7 +171,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
     page.show_list_view = function() {
         $('#view-single-trip-details').hide();
         $('#view-all-trips-list').show();
-        page.set_title(__('NetraNext Journey'));
+        page.set_title(__('Trip Details'));
         page.load_all_trips();
     };
 
@@ -218,7 +218,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             tbody.append(rowHtml);
         });
 
-        // Clicking any row opens the single trip telemetry details page
+        // Clicking any row opens the single trip details page
         $('.clickable-trip-row').on('click', function(e) {
             var tripId = $(this).data('trip-id');
             if (tripId) {
@@ -227,11 +227,11 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         });
     };
 
-    // --- VIEW 2: LOAD SINGLE TRIP TELEMETRY ---
+    // --- VIEW 2: LOAD SINGLE TRIP DETAILS ---
     page.load_single_trip = function(trip_id) {
         $('#view-all-trips-list').hide();
         $('#view-single-trip-details').show();
-        page.set_title(__('Trip Telemetry: ') + trip_id);
+        page.set_title(__('Trip Details: ') + trip_id);
 
         frappe.call({
             method: 'netranext_client.netranext.page.netranext_trip_details.netranext_trip_details.get_trip_telemetry_details',
@@ -240,7 +240,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                 if (r.message) {
                     page.render_single_trip_details(r.message);
                 } else {
-                    frappe.msgprint(__('Unable to load telemetry details for trip ') + trip_id);
+                    frappe.msgprint(__('Unable to load details for trip ') + trip_id);
                 }
             }
         });

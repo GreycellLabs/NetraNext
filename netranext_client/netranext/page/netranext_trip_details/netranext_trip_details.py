@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 
 def get_context(context):
     """
-    Build context for the NetraNext Trip Details & Telemetry page
+    Build context for the NetraNext Trip Details page
     """
-    context.title = "Trip Details & Telemetry"
+    context.title = "Trip Details"
     context.csrf_token = frappe.sessions.get_csrf_token()
     return context
 

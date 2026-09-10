@@ -99,7 +99,7 @@ pages_dict = {
         "roles": ["System Manager", "HR Manager", "HR User"]
     },
     "netranext-trip-details": {
-        "title": "Trip Details & Telemetry",
+        "title": "Trip Details",
         "route": "/app/netranext-trip-details",
         "icon": "fa-info-circle",
         "roles": ["System Manager", "HR Manager", "HR User", "All"]

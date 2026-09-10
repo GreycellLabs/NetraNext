@@ -49,7 +49,7 @@ def execute():
             "module": "NetraNext",
             "standard": "Yes",
             "system_page": 1,
-            "title": "Trip Details & Telemetry",
+            "title": "Trip Details",
             "icon": "fa-info-circle"
         }
     ]

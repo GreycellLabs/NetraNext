@@ -10,7 +10,7 @@
  "name": "netranext-trip-details",
  "owner": "Administrator",
  "page_name": "netranext-trip-details",
- "title": "Trip Details & Telemetry",
+ "title": "Trip Details",
  "roles": [
   {
    "role": "System Manager"
