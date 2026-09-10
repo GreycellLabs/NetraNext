@@ -3,6 +3,14 @@
 frappe.ui.form.on('NetraNext Journey', {
     refresh: function(frm) {
         // Add custom buttons depending on trip status
+        frm.add_custom_button(__('Telemetry & Timeline'), function() {
+            frappe.route_options = {
+                trip_id: frm.doc.name,
+                employee: frm.doc.employee
+            };
+            frappe.set_route('netranext-trip-details');
+        });
+
         if (frm.doc.status === 'In Progress') {
             frm.add_custom_button(__('Live Tracking'), function() {
                 frappe.route_options = {

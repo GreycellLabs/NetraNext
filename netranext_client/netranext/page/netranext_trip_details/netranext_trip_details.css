@@ -1,0 +1,204 @@
+/* Simple Frappe Native UI Styles for Trip Details Page */
+
+.netranext-trip-details-container {
+    padding: 15px;
+}
+
+/* Frappe Card Wrappers */
+.frappe-card {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.frappe-filter-bar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+}
+
+.frappe-filter-bar label {
+    font-weight: 600;
+    font-size: 12px;
+    color: #4b5563;
+    margin-bottom: 0;
+}
+
+/* Standard Frappe Table */
+.trips-table {
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.trips-table th {
+    background: #f3f4f6;
+    color: #374151;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.trips-table td {
+    vertical-align: middle;
+    font-size: 13px;
+    color: #1f2937;
+}
+
+.clickable-trip-row {
+    cursor: pointer;
+}
+
+.clickable-trip-row:hover {
+    background-color: #f9fafb !important;
+}
+
+/* Indicators */
+.indicator-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.indicator-pill.green {
+    background: #def7ec;
+    color: #03543f;
+}
+
+.indicator-pill.orange {
+    background: #feecdc;
+    color: #9c4221;
+}
+
+/* Details Page Header & Metrics */
+.trip-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.metric-box-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.metric-box {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 10px 14px;
+}
+
+.metric-box .label {
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.metric-box .value {
+    font-size: 16px;
+    color: #111827;
+    font-weight: 700;
+}
+
+.end-reason-callout {
+    background: #eff6ff;
+    border-left: 4px solid #2563eb;
+    padding: 10px 14px;
+    border-radius: 4px;
+    color: #1e40af;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+/* Two-Column Grid: Timeline Left, Map Right */
+.split-view-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+@media (max-width: 900px) {
+    .split-view-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Timeline */
+.timeline-container {
+    position: relative;
+    padding-left: 24px;
+    margin: 0;
+    list-style: none;
+}
+
+.timeline-container::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    background: #d1d5db;
+}
+
+.timeline-event-item {
+    position: relative;
+    margin-bottom: 16px;
+}
+
+.timeline-event-dot {
+    position: absolute;
+    left: -24px;
+    top: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #2563eb;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    box-shadow: 0 0 0 3px #ffffff;
+}
+
+.timeline-event-box {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 8px 12px;
+}
+
+.timeline-event-time {
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: 600;
+}
+
+.timeline-event-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.timeline-event-desc {
+    font-size: 12px;
+    color: #4b5563;
+}

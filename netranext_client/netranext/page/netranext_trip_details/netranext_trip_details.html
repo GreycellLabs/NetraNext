@@ -1,0 +1,59 @@
+<div class="netranext-trip-details-container">
+    <!-- Header Overview Card -->
+    <div class="trip-header-card">
+        <div class="trip-title-row">
+            <h2 class="trip-title" id="trip-header-id">Trip Details</h2>
+            <span class="trip-status-badge" id="trip-header-status">Loading...</span>
+        </div>
+
+        <div class="end-reason-box" id="trip-end-reason-container">
+            <strong>🛑 End Reason:</strong> <span id="trip-header-end-reason">Loading end reason...</span>
+        </div>
+
+        <div class="metric-grid">
+            <div class="metric-card">
+                <div class="metric-label">Employee</div>
+                <div class="metric-value" id="trip-header-employee">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Date</div>
+                <div class="metric-value" id="trip-header-date">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Total Distance</div>
+                <div class="metric-value" id="trip-header-distance">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Duration</div>
+                <div class="metric-value" id="trip-header-duration">-</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Content Grid: Telemetry Timeline (Left) & Map (Right) -->
+    <div class="content-split-grid">
+        <!-- Vertical Telemetry Timeline (Left Panel) -->
+        <div class="panel-box">
+            <div class="panel-title">
+                <i class="fa fa-history text-info"></i> Chronological Telemetry Timeline
+            </div>
+            <div id="trip-timeline-wrapper">
+                <ul class="timeline-list" id="trip-timeline-list">
+                    <li class="timeline-item">
+                        <div class="timeline-content">
+                            <div class="timeline-event-title">Loading telemetry data...</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Interactive Leaflet Map (Right Panel) -->
+        <div class="panel-box">
+            <div class="panel-title">
+                <i class="fa fa-map-marked-alt text-primary"></i> Route Path & Disconnect Events
+            </div>
+            <div id="trip-map-container"></div>
+        </div>
+    </div>
+</div>

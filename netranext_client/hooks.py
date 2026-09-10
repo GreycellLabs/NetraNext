@@ -46,7 +46,8 @@ web_include_js = "/assets/netranext_client/config/api_config.js"
 page_css = {
     "netranext-dashboard": "/assets/netranext_client/css/netranext_dashboard.css",
     "netranext-live-tracking": "/assets/netranext_client/css/netranext_live_tracking.css",
-    "netranext-trip-history": "/assets/netranext_client/css/netranext_trip_history.css"
+    "netranext-trip-history": "/assets/netranext_client/css/netranext_trip_history.css",
+    "netranext-trip-details": "/assets/netranext_client/css/netranext_trip_details.css"
 }
 
 # include js in doctype views
@@ -96,6 +97,12 @@ pages_dict = {
         "route": "/app/netranext-trip-history",
         "icon": "fa-history",
         "roles": ["System Manager", "HR Manager", "HR User"]
+    },
+    "netranext-trip-details": {
+        "title": "Trip Details & Telemetry",
+        "route": "/app/netranext-trip-details",
+        "icon": "fa-info-circle",
+        "roles": ["System Manager", "HR Manager", "HR User", "All"]
     }
 }
 

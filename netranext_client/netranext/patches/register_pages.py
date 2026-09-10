@@ -41,6 +41,16 @@ def execute():
             "system_page": 1,
             "title": "Trip History",
             "icon": "fa-history"
+        },
+        {
+            "doctype": "Page",
+            "name": "netranext-trip-details",
+            "page_name": "netranext-trip-details",
+            "module": "NetraNext",
+            "standard": "Yes",
+            "system_page": 1,
+            "title": "Trip Details & Telemetry",
+            "icon": "fa-info-circle"
         }
     ]
 
