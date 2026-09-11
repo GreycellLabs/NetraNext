@@ -104,26 +104,54 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                 </div>
             </div>
 
-            <!-- Two-Column Grid: Timeline Left, Map Right -->
+            <!-- Two-Column Grid: Timeline & Telemetry Left, Map Right -->
             <div class="split-view-grid">
-                <!-- Left Panel: Event Timeline -->
-                <div class="frappe-card">
-                    <h5 style="font-weight: 600; margin-bottom: 12px; font-size: 13px; color: #334155;">
-                        <i class="fa fa-history text-info"></i> Event Timeline
-                    </h5>
-                    <ul class="timeline-container" id="single-trip-timeline-list">
-                        <li class="timeline-event-item">
-                            <div class="timeline-event-box">Loading trip details...</div>
-                        </li>
-                    </ul>
+                <!-- Left Panel: Event Timeline & Telemetry -->
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <!-- Event Timeline Card -->
+                    <div class="frappe-card collapsible-card">
+                        <div class="card-expand-header" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; padding-bottom: 2px;">
+                            <h5 style="font-weight: 600; margin: 0; font-size: 13px; color: #334155;">
+                                <i class="fa fa-history text-info"></i> Event Timeline
+                            </h5>
+                            <i class="fa fa-chevron-up toggle-chevron" style="color: #94a3b8; font-size: 11px; transition: transform 0.2s ease;"></i>
+                        </div>
+                        <div class="card-expand-content" style="margin-top: 12px;">
+                            <ul class="timeline-container" id="single-trip-timeline-list">
+                                <li class="timeline-event-item">
+                                    <div class="timeline-event-box">Loading trip details...</div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Device & Telemetry Details Card -->
+                    <div class="frappe-card collapsible-card">
+                        <div class="card-expand-header" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; padding-bottom: 2px;">
+                            <h5 style="font-weight: 600; margin: 0; font-size: 13px; color: #334155;">
+                                <i class="fa fa-mobile-alt text-primary"></i> Device & Telemetry Details
+                            </h5>
+                            <i class="fa fa-chevron-up toggle-chevron" style="color: #94a3b8; font-size: 11px; transition: transform 0.2s ease;"></i>
+                        </div>
+                        <div class="card-expand-content" style="margin-top: 12px;">
+                            <div id="single-trip-telemetry-container">
+                                <div style="color: #94a3b8; font-size: 12px;">Loading telemetry data...</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Right Panel: Interactive Leaflet Map -->
-                <div class="frappe-card">
-                    <h5 style="font-weight: 600; margin-bottom: 12px; font-size: 13px; color: #334155;">
-                        <i class="fa fa-map-marked-alt text-primary"></i> Route Path & Location Events
-                    </h5>
-                    <div id="single-trip-map-container" style="height: 440px; width: 100%; border-radius: 6px; border: 1px solid #e5e7eb;"></div>
+                <div class="frappe-card collapsible-card">
+                    <div class="card-expand-header" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; padding-bottom: 2px;">
+                        <h5 style="font-weight: 600; margin: 0; font-size: 13px; color: #334155;">
+                            <i class="fa fa-map-marked-alt text-primary"></i> Route Path & Location Events
+                        </h5>
+                        <i class="fa fa-chevron-up toggle-chevron" style="color: #94a3b8; font-size: 11px; transition: transform 0.2s ease;"></i>
+                    </div>
+                    <div class="card-expand-content" style="margin-top: 12px;">
+                        <div id="single-trip-map-container" style="height: 480px; width: 100%; border-radius: 6px; border: 1px solid #e5e7eb;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -191,6 +219,22 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
 
         $('#btn-back-to-list').on('click', function() {
             page.show_list_view();
+        });
+
+        // Collapsible Card Expand/Collapse Toggle
+        $(wrapper).on('click', '.card-expand-header', function() {
+            var content = $(this).next('.card-expand-content');
+            var chevron = $(this).find('.toggle-chevron');
+            content.slideToggle(200, function() {
+                if (page.trip_map && typeof L !== 'undefined') {
+                    page.trip_map.invalidateSize();
+                }
+            });
+            if (chevron.hasClass('fa-chevron-up')) {
+                chevron.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+            } else {
+                chevron.removeClass('fa-chevron-down').addClass('fa-chevron-up');
+            }
         });
 
         // Check if a specific trip_id was requested
@@ -329,8 +373,74 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         // Render Chronological Timeline (Left)
         page.render_timeline(data.timeline_events);
 
+        // Render Telemetry & Device Info (Left)
+        page.render_telemetry(data.telemetry);
+
         // Render Leaflet Map (Right)
         page.render_map(data.raw_gps_data);
+    };
+
+    page.render_telemetry = function(telemetry) {
+        var container = $('#single-trip-telemetry-container');
+        container.empty();
+
+        if (!telemetry || (typeof telemetry === 'object' && Object.keys(telemetry).length === 0)) {
+            container.html('<div style="color: #94a3b8; font-size: 12px; font-style: italic; padding: 6px 0;">No telemetry logged for this trip.</div>');
+            return;
+        }
+
+        var device = telemetry.device || {};
+        var battery = telemetry.battery || {};
+        var gps = telemetry.gps_stats || {};
+
+        var model = device.model || 'Unknown';
+        var osVersion = device.os_version || 'N/A';
+        var netStart = device.network_type_at_start || 'N/A';
+
+        var batStart = battery.start_level !== undefined && battery.start_level !== null ? battery.start_level + '%' : 'N/A';
+        var batEnd = battery.end_level !== undefined && battery.end_level !== null ? battery.end_level + '%' : 'N/A';
+        var batConsumed = battery.total_consumed_pct !== undefined && battery.total_consumed_pct !== null ? battery.total_consumed_pct + '%' : '0%';
+        var batSaver = battery.battery_saver_active ? 'Active' : 'Off';
+
+        var totalPts = gps.total_points_captured !== undefined ? gps.total_points_captured : 'N/A';
+        var accuracy = gps.accuracy_range_meters || 'N/A';
+
+        var html = `
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <!-- Device Details Box -->
+                <div style="background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div class="card-expand-header" style="cursor: pointer; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                        <span><i class="fa fa-mobile-alt text-primary"></i> Device Information</span>
+                        <i class="fa fa-chevron-up toggle-chevron" style="font-size: 10px; color: #94a3b8; transition: transform 0.2s ease;"></i>
+                    </div>
+                    <div class="card-expand-content" style="margin-top: 8px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px;">
+                            <div><span style="color: #64748b;">Model:</span> <strong style="color: #0f172a;">${model}</strong></div>
+                            <div><span style="color: #64748b;">Network Start:</span> <strong style="color: #0f172a;">${netStart}</strong></div>
+                            <div style="grid-column: span 2; word-break: break-all;"><span style="color: #64748b;">OS Version:</span> <strong style="color: #0f172a; font-size: 11px;">${osVersion}</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Battery & GPS Details Box -->
+                <div style="background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div class="card-expand-header" style="cursor: pointer; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                        <span><i class="fa fa-battery-half text-success"></i> Battery & GPS Telemetry</span>
+                        <i class="fa fa-chevron-up toggle-chevron" style="font-size: 10px; color: #94a3b8; transition: transform 0.2s ease;"></i>
+                    </div>
+                    <div class="card-expand-content" style="margin-top: 8px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px;">
+                            <div><span style="color: #64748b;">Battery Level:</span> <strong style="color: #0f172a;">${batStart} ➔ ${batEnd}</strong></div>
+                            <div><span style="color: #64748b;">Battery Used:</span> <strong style="color: #0f172a;">${batConsumed}</strong></div>
+                            <div><span style="color: #64748b;">GPS Points:</span> <strong style="color: #0f172a;">${totalPts} points</strong></div>
+                            <div><span style="color: #64748b;">Accuracy:</span> <strong style="color: #0f172a;">${accuracy}</strong></div>
+                            <div><span style="color: #64748b;">Battery Saver:</span> <strong style="color: #0f172a;">${batSaver}</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.html(html);
     };
 
     page.render_timeline = function(events) {

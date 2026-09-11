@@ -1197,24 +1197,32 @@ def store_face_registration_request():
                 status_code=400
             )
 
+        req_status = data.get("status", "Pending")
+        actioned_by = data.get("actioned_by", "Administrator" if req_status == "Approved" else None)
+
         # Create request document
-        req = frappe.get_doc({
+        req_dict = {
             "doctype": "NetraNext Face Registration Request",
             "employee": data.get("employee_id"),
             "face_id": data.get("face_id"),
             "request_type": data.get("request_type", "Register"),
-            "status": "Pending",
+            "status": req_status,
             "face_photo": data.get("face_photo_url"),
             "face_embedding": data.get("embedding"),
             "orchestrator_request_name": data.get("orchestrator_request_name", ""),
             "requested_date": data.get("requested_date") or frappe.utils.now_datetime()
-        })
+        }
+        if req_status == "Approved":
+            req_dict["actioned_by"] = actioned_by
+            req_dict["actioned_date"] = frappe.utils.now_datetime()
+
+        req = frappe.get_doc(req_dict)
 
         req.insert(ignore_permissions=True)
         frappe.db.commit()
 
         tenant_bench_logger.info(
-            f"Created pending face registration request {req.name} for employee: {req.employee}",
+            f"Created {req_status} face registration request {req.name} for employee: {req.employee}",
             "FACE_REGISTRATION_REQUEST_SYNC"
         )
 
@@ -1222,7 +1230,7 @@ def store_face_registration_request():
             message="Face registration request stored successfully",
             data={
                 "request_name": req.name,
-                "status": "Pending"
+                "status": req_status
             }
         )
 
