@@ -60,20 +60,23 @@ def _decode_trip_status_log(raw):
     return entries
 
 
-HEALTH_EVENT_META = {
-    "TRIP_START": ("Trip Logging Started", "Health logging started on phone", "fa-play-circle", "blue"),
-    "TRIP_STOP": ("Trip Logging Stopped", "Health logging stopped", "fa-stop-circle", "blue"),
-    "NETWORK_LOST": ("Network Lost", "Internet connection dropped. GPS kept recording on phone.", "fa-wifi-slash", "red"),
-    "NETWORK_BACK": ("Network Restored", "Internet connection restored, pending points sync.", "fa-wifi", "green"),
-    "SYNC_FAILED": ("Sync Failed", "Points could not be sent to server.", "fa-exclamation-triangle", "red"),
-    "APP_BACKGROUND": ("App In Background", "App moved to background.", "fa-mobile-alt", "orange"),
-    "APP_FOREGROUND": ("App In Foreground", "App returned to foreground.", "fa-mobile-alt", "blue"),
-    "BATTERY_LOW": ("Battery Low", "Battery dropped below 15%.", "fa-battery-quarter", "orange"),
-    "TRIP_EXTENDED": ("Trip Extended", "Trip extended by user.", "fa-arrows-alt", "blue"),
-    "FOREGROUND_SERVICE_STARTED": ("Background Service Started", "App went to background - foreground service now records GPS.", "fa-cogs", "blue"),
-    "FOREGROUND_SERVICE_STOPPED": ("Background Service Stopped", "In-app GPS stream took over (app in foreground / trip ended).", "fa-cogs", "green"),
-    "BATTERY_OPTIMIZATION_EXEMPTED": ("Battery Optimization Exempted", "App is exempt - OS will not kill tracking.", "fa-shield", "green"),
-    "BATTERY_OPTIMIZATION_ACTIVE": ("Battery Optimization ON", "Battery optimization still active - OS may stop tracking when screen is off.", "fa-shield", "orange"),
+# The Event Timeline intentionally shows ONLY 4 event types:
+# 1. Trip Started  2. Trip Ended  3. User Offline  4. User Online
+# (Trip Start/End are built from the Journey doc fields; only network
+# lost/back events come from the health log). Every other health event
+# (battery, app background, background service, sync checks) remains
+# available in the Trip Health Log card below.
+TIMELINE_HEALTH_EVENTS = {
+    "NETWORK_LOST": (
+        "User Offline",
+        "Network connection lost - GPS points could not be sent to the server.",
+        "fa-wifi-slash",
+    ),
+    "NETWORK_BACK": (
+        "User Online",
+        "Network connection restored - pending GPS points can now sync.",
+        "fa-wifi",
+    ),
 }
 
 
@@ -190,15 +193,17 @@ def _build_health_log_display(entries, status_sample_interval=6):
 
 def _health_events_for_timeline(entries):
     """
-    Convert health log events into the existing timeline_events format.
+    Convert health log connection events into the timeline_events format.
+    Only network lost/back events are surfaced (User Offline / User Online);
+    all other health events stay in the Trip Health Log card.
     """
     events = []
     for e in entries:
         etype = e.get("e")
-        meta = HEALTH_EVENT_META.get(etype)
+        meta = TIMELINE_HEALTH_EVENTS.get(etype)
         if not meta:
             continue
-        title, details, icon, _color = meta
+        title, details, icon = meta
         reason = e.get("reason")
         events.append({
             "timestamp": e.get("t", ""),
@@ -208,6 +213,65 @@ def _health_events_for_timeline(entries):
             "icon": icon,
         })
     return events
+
+
+def _build_device_telemetry(meta, health_entries, raw_gps):
+    """
+    Build the Device & Telemetry card payload.
+
+    Device details arrive from two sources:
+    - the trip health log (battery level, network type, GPS points recorded
+      every 10s on the phone) stored in trip_status_log
+    - device model / OS version sent by the app inside the journey payload
+      (metadata.flutter_data.deviceInfo)
+
+    Older trips may additionally carry a legacy telemetry dict inside
+    metadata. Everything available is merged so the card always shows the
+    device details that were actually received.
+    """
+    legacy = meta.get("telemetry") or {}
+    device = dict(legacy.get("device") or {})
+    battery = dict(legacy.get("battery") or {})
+    gps_stats = dict(legacy.get("gps_stats") or {})
+
+    flutter_data = meta.get("flutter_data") or {}
+    device_info = flutter_data.get("deviceInfo") or {}
+    if device_info.get("model"):
+        device.setdefault("model", device_info["model"])
+    if device_info.get("os_version"):
+        device.setdefault("os_version", device_info["os_version"])
+
+    status_entries = [e for e in health_entries if e.get("e") == "STATUS"]
+    if status_entries:
+        first = status_entries[0]
+        last = status_entries[-1]
+
+        net_type = (first.get("net") or {}).get("type")
+        if net_type:
+            device.setdefault("network_type_at_start", net_type)
+
+        start_lvl = (first.get("bat") or {}).get("lvl")
+        end_lvl = (last.get("bat") or {}).get("lvl")
+        if isinstance(start_lvl, (int, float)):
+            battery.setdefault("start_level", start_lvl)
+        if isinstance(end_lvl, (int, float)):
+            battery.setdefault("end_level", end_lvl)
+        if isinstance(start_lvl, (int, float)) and isinstance(end_lvl, (int, float)):
+            battery["total_consumed_pct"] = max(int(start_lvl) - int(end_lvl), 0)
+
+        # Android: True = battery optimization still active (tracking risk)
+        bat_opt = (last.get("bat") or {}).get("opt")
+        if isinstance(bat_opt, bool):
+            battery["battery_optimization_active"] = bat_opt
+
+        collected = (last.get("pts") or {}).get("col")
+        if isinstance(collected, (int, float)):
+            gps_stats.setdefault("total_points_captured", int(collected))
+
+    if "total_points_captured" not in gps_stats and raw_gps:
+        gps_stats["total_points_captured"] = len(raw_gps)
+
+    return {"device": device, "battery": battery, "gps_stats": gps_stats}
 
 
 @frappe.whitelist()
@@ -386,6 +450,7 @@ def get_trip_telemetry_details(trip_id=None):
             employee_name = emp_doc.get("employee_name") or f"{emp_doc.get('first_name', '')} {emp_doc.get('last_name', '')}".strip()
 
     # Build Chronological Timeline Events
+    # The timeline shows ONLY: Trip Started, User Offline, User Online, Trip Ended
     timeline_events = []
 
     start_time_str = str(doc.start_time) if doc.start_time else "N/A"
@@ -397,36 +462,44 @@ def get_trip_telemetry_details(trip_id=None):
         "icon": "fa-play-circle"
     })
 
-    # Telemetry events from Metadata JSON
-    telemetry = meta.get("telemetry", {})
-    network_events = telemetry.get("network_events", [])
-    for net_ev in network_events:
-        event_type = net_ev.get("event", "")
-        ts = net_ev.get("timestamp", start_time_str)
-        if event_type == "OFFLINE_DISCONNECT":
-            timeline_events.append({
-                "timestamp": ts,
-                "type": "NETWORK_OFFLINE",
-                "title": "Device Went Offline",
-                "details": "Mobile internet connection dropped. GPS satellite tracking continued locally.",
-                "icon": "fa-wifi-slash"
-            })
-        elif event_type == "ONLINE_RECONNECTED":
-            timeline_events.append({
-                "timestamp": ts,
-                "type": "NETWORK_ONLINE",
-                "title": "Network Reconnected",
-                "details": f"Connection restored via {net_ev.get('type', 'Mobile/Wi-Fi')}.",
-                "icon": "fa-wifi"
-            })
-
-    end_time_str = str(doc.end_time) if doc.end_time else "In Progress"
-
     # Trip Health Log (10s device status log from the phone)
     health_entries = _decode_trip_status_log(getattr(doc, "trip_status_log", None))
     health_summary = _build_health_summary(health_entries)
     health_log_display = _build_health_log_display(health_entries)
-    timeline_events.extend(_health_events_for_timeline(health_entries))
+
+    # User Offline / User Online events from the health log (current source)
+    connection_events = _health_events_for_timeline(health_entries)
+
+    # Fallback for trips recorded before the health log existed: legacy
+    # network events embedded in the metadata telemetry
+    if not connection_events:
+        legacy_network_events = (meta.get("telemetry") or {}).get("network_events", [])
+        for net_ev in legacy_network_events:
+            event_type = net_ev.get("event", "")
+            ts = net_ev.get("timestamp", start_time_str)
+            if event_type == "OFFLINE_DISCONNECT":
+                connection_events.append({
+                    "timestamp": ts,
+                    "type": "NETWORK_OFFLINE",
+                    "title": "User Offline",
+                    "details": "Network connection lost - GPS points could not be sent to the server.",
+                    "icon": "fa-wifi-slash"
+                })
+            elif event_type == "ONLINE_RECONNECTED":
+                connection_events.append({
+                    "timestamp": ts,
+                    "type": "NETWORK_ONLINE",
+                    "title": "User Online",
+                    "details": f"Network connection restored via {net_ev.get('type', 'Mobile/Wi-Fi')}.",
+                    "icon": "fa-wifi"
+                })
+
+    timeline_events.extend(connection_events)
+
+    # Device & Telemetry card payload (merged from health log + metadata)
+    telemetry = _build_device_telemetry(meta, health_entries, raw_gps)
+
+    end_time_str = str(doc.end_time) if doc.end_time else "In Progress"
 
     end_reason_code = meta.get("end_reason") or ("User manually tapped End Journey" if doc.status == "Completed" else "Trip still active")
     

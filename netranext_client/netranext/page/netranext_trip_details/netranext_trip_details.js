@@ -403,14 +403,14 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         var container = $('#single-trip-telemetry-container');
         container.empty();
 
-        if (!telemetry || (typeof telemetry === 'object' && Object.keys(telemetry).length === 0)) {
-            container.html('<div style="color: #94a3b8; font-size: 12px; font-style: italic; padding: 6px 0;">No telemetry logged for this trip.</div>');
+        var device = (telemetry && telemetry.device) || {};
+        var battery = (telemetry && telemetry.battery) || {};
+        var gps = (telemetry && telemetry.gps_stats) || {};
+
+        if (!Object.keys(device).length && !Object.keys(battery).length && !Object.keys(gps).length) {
+            container.html('<div style="color: #94a3b8; font-size: 12px; font-style: italic; padding: 6px 0;">No device telemetry recorded for this trip.</div>');
             return;
         }
-
-        var device = telemetry.device || {};
-        var battery = telemetry.battery || {};
-        var gps = telemetry.gps_stats || {};
 
         var model = device.model || 'Unknown';
         var osVersion = device.os_version || 'N/A';
@@ -419,7 +419,8 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         var batStart = battery.start_level !== undefined && battery.start_level !== null ? battery.start_level + '%' : 'N/A';
         var batEnd = battery.end_level !== undefined && battery.end_level !== null ? battery.end_level + '%' : 'N/A';
         var batConsumed = battery.total_consumed_pct !== undefined && battery.total_consumed_pct !== null ? battery.total_consumed_pct + '%' : '0%';
-        var batSaver = battery.battery_saver_active ? 'Active' : 'Off';
+        var batOpt = battery.battery_optimization_active === true ? 'Active (risk)'
+            : (battery.battery_optimization_active === false ? 'Exempt' : 'N/A');
 
         var totalPts = gps.total_points_captured !== undefined ? gps.total_points_captured : 'N/A';
         var accuracy = gps.accuracy_range_meters || 'N/A';
@@ -453,7 +454,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                             <div><span style="color: #64748b;">Battery Used:</span> <strong style="color: #0f172a;">${batConsumed}</strong></div>
                             <div><span style="color: #64748b;">GPS Points:</span> <strong style="color: #0f172a;">${totalPts} points</strong></div>
                             <div><span style="color: #64748b;">Accuracy:</span> <strong style="color: #0f172a;">${accuracy}</strong></div>
-                            <div><span style="color: #64748b;">Battery Saver:</span> <strong style="color: #0f172a;">${batSaver}</strong></div>
+                            <div><span style="color: #64748b;">Battery Optimization:</span> <strong style="color: #0f172a;">${batOpt}</strong></div>
                         </div>
                     </div>
                 </div>
