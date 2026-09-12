@@ -139,6 +139,22 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                             </div>
                         </div>
                     </div>
+
+                    <!-- Trip Health Log Card -->
+                    <div class="frappe-card collapsible-card">
+                        <div class="card-expand-header" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; padding-bottom: 2px;">
+                            <h5 style="font-weight: 600; margin: 0; font-size: 13px; color: #334155;">
+                                <i class="fa fa-heartbeat text-success"></i> Trip Health Log
+                                <span id="health-log-badge" style="font-size: 10px; font-weight: 600; margin-left: 6px;"></span>
+                            </h5>
+                            <i class="fa fa-chevron-up toggle-chevron" style="color: #94a3b8; font-size: 11px; transition: transform 0.2s ease;"></i>
+                        </div>
+                        <div class="card-expand-content" style="margin-top: 12px;">
+                            <div id="single-trip-health-container">
+                                <div style="color: #94a3b8; font-size: 12px;">Loading health log...</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Right Panel: Interactive Leaflet Map -->
@@ -376,6 +392,9 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         // Render Telemetry & Device Info (Left)
         page.render_telemetry(data.telemetry);
 
+        // Render Trip Health Log (Left)
+        page.render_health_log(data.health_summary, data.health_log);
+
         // Render Leaflet Map (Right)
         page.render_map(data.raw_gps_data);
     };
@@ -441,6 +460,126 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             </div>
         `;
         container.html(html);
+    };
+
+    page.render_health_log = function(summary, logEntries) {
+        var container = $('#single-trip-health-container');
+        container.empty();
+
+        if (!summary || !summary.has_log) {
+            $('#health-log-badge').text('');
+            container.html('<div style="color: #94a3b8; font-size: 12px; font-style: italic; padding: 6px 0;">No health log recorded for this trip (app version may be older than this feature).</div>');
+            return;
+        }
+
+        function fmtDur(seconds) {
+            if (seconds === null || seconds === undefined) return '-';
+            if (seconds < 60) return Math.round(seconds) + 's';
+            var m = Math.floor(seconds / 60);
+            var s = Math.round(seconds % 60);
+            return m + 'm ' + s + 's';
+        }
+
+        function fmtTime(ts) {
+            if (!ts) return '';
+            var str = String(ts).trim();
+            if (str.includes('T')) {
+                return str.split('T')[1].split('.')[0].replace('Z', '');
+            }
+            if (str.includes(' ')) return str.split(' ')[1];
+            return str;
+        }
+
+        // Badge in card header
+        $('#health-log-badge').html(
+            '<span class="indicator-pill ' + (summary.online_pct >= 95 ? 'green' : (summary.online_pct >= 80 ? 'orange' : 'red')) + '">' +
+            summary.online_pct + '% online</span>'
+        );
+
+        // Summary strip
+        var sumHtml = `
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px;">
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px;">
+                    <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">Online</div>
+                    <div style="font-size: 14px; font-weight: 700; color: #16a34a;">${summary.online_pct}%</div>
+                    <div style="font-size: 10px; color: #94a3b8;">Offline: ${fmtDur(summary.offline_seconds)}</div>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px;">
+                    <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">GPS Off</div>
+                    <div style="font-size: 14px; font-weight: 700; color: #ea580c;">${fmtDur(summary.gps_off_seconds)}</div>
+                    <div style="font-size: 10px; color: #94a3b8;">Longest offline: ${fmtDur(summary.longest_offline_seconds)}</div>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px;">
+                    <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">Sync</div>
+                    <div style="font-size: 14px; font-weight: 700; color: ${summary.sync_failures > 0 ? '#dc2626' : '#16a34a'};">${summary.sync_failures} failure(s)</div>
+                    <div style="font-size: 10px; color: #94a3b8;">Max pending: ${summary.max_pending_points} pts</div>
+                </div>
+            </div>
+        `;
+
+        // Log table
+        var rows = '';
+        (logEntries || []).forEach(function(e) {
+            var etype = e.e || '';
+            var rowColor = '#334155';
+            var rowBg = '#ffffff';
+            var statusText = '';
+            var details = '';
+
+            if (etype === 'STATUS') {
+                var netOn = e.net && e.net.on;
+                var gpsOn = e.gps && e.gps.on;
+                var pend = e.pts ? (e.pts.pend || 0) : 0;
+                statusText = 'Status';
+                var flags = [];
+                flags.push(gpsOn ? 'GPS on' : 'GPS OFF');
+                flags.push(netOn ? ('Net ' + (e.net.type || 'on')) : 'NET OFF');
+                flags.push('pend ' + pend);
+                if (e.bat && e.bat.lvl !== null && e.bat.lvl !== undefined) flags.push('bat ' + e.bat.lvl + '%');
+                if (e.bat && e.bat.opt === true) flags.push('b.opt ON');
+                details = flags.join(' | ');
+                if (!netOn) { rowBg = '#fef2f2'; rowColor = '#b91c1c'; }
+                else if (!gpsOn) { rowBg = '#fff7ed'; rowColor = '#c2410c'; }
+            } else if (etype === 'SYNC_CHECK') {
+                statusText = 'Sync Check';
+                details = (e.result === 'OK' ? 'OK' : 'FAIL') + (e.reason ? ' - ' + e.reason : '') + ' (pending: ' + (e.pending || 0) + ')';
+                if (e.result === 'FAIL') { rowBg = '#fef2f2'; rowColor = '#b91c1c'; }
+            } else {
+                statusText = etype.replace(/_/g, ' ');
+                details = e.reason || '';
+                if (etype === 'NETWORK_LOST' || etype === 'SYNC_FAILED') { rowBg = '#fef2f2'; rowColor = '#b91c1c'; }
+                else if (etype === 'BATTERY_LOW' || etype === 'APP_BACKGROUND' || etype === 'BATTERY_OPTIMIZATION_ACTIVE') { rowBg = '#fff7ed'; rowColor = '#c2410c'; }
+                else if (etype === 'NETWORK_BACK' || etype === 'BATTERY_OPTIMIZATION_EXEMPTED') { rowBg = '#f0fdf4'; rowColor = '#15803d'; }
+            }
+
+            rows += `
+                <tr style="background: ${rowBg};">
+                    <td style="font-size: 11px; color: #64748b; white-space: nowrap;">${fmtTime(e.t)}</td>
+                    <td style="font-size: 11px; font-weight: 600; color: ${rowColor}; white-space: nowrap;">${statusText}</td>
+                    <td style="font-size: 11px; color: ${rowColor};">${details}</td>
+                </tr>
+            `;
+        });
+
+        var tableHtml = `
+            <div style="font-size: 11px; color: #94a3b8; margin-bottom: 6px;">
+                Recorded every 10s on the phone. Showing events + failures + 1 status sample per minute (of ${summary.total_entries} entries).
+            </div>
+            <div style="max-height: 320px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <table class="table table-hover" style="margin-bottom: 0; font-size: 12px;">
+                    <thead style="position: sticky; top: 0; background: #f9fafb;">
+                        <tr>
+                            <th style="font-size: 10px;">Time</th>
+                            <th style="font-size: 10px;">Type</th>
+                            <th style="font-size: 10px;">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        `;
+
+        container.html(sumHtml + tableHtml);
     };
 
     page.render_timeline = function(events) {

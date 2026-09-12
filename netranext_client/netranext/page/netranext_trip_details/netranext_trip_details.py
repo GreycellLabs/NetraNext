@@ -1,4 +1,6 @@
 import json
+import base64
+import gzip
 import frappe
 from frappe import _
 from datetime import datetime, timezone
@@ -11,6 +13,201 @@ def get_context(context):
     context.title = "Trip Details"
     context.csrf_token = frappe.sessions.get_csrf_token()
     return context
+
+
+def _decode_trip_status_log(raw):
+    """
+    Decode the trip health log stored on the Journey doc.
+
+    The mobile app stores it as JSON-lines (one JSON object per line),
+    gzip-compressed and base64 encoded. A plain JSON-lines fallback is
+    also supported.
+
+    Returns a list of entry dicts sorted by timestamp.
+    """
+    if not raw:
+        return []
+
+    text = None
+    try:
+        compressed = base64.b64decode(raw)
+        text = gzip.decompress(compressed).decode("utf-8")
+    except Exception:
+        text = None
+
+    if text is None:
+        # Fallback: plain (uncompressed) JSON-lines
+        try:
+            if "\n" in raw or raw.strip().startswith("{"):
+                text = raw
+        except Exception:
+            return []
+
+    if not text:
+        return []
+
+    entries = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except Exception:
+            continue
+
+    entries.sort(key=lambda x: str(x.get("t", "")))
+    return entries
+
+
+HEALTH_EVENT_META = {
+    "TRIP_START": ("Trip Logging Started", "Health logging started on phone", "fa-play-circle", "blue"),
+    "TRIP_STOP": ("Trip Logging Stopped", "Health logging stopped", "fa-stop-circle", "blue"),
+    "NETWORK_LOST": ("Network Lost", "Internet connection dropped. GPS kept recording on phone.", "fa-wifi-slash", "red"),
+    "NETWORK_BACK": ("Network Restored", "Internet connection restored, pending points sync.", "fa-wifi", "green"),
+    "SYNC_FAILED": ("Sync Failed", "Points could not be sent to server.", "fa-exclamation-triangle", "red"),
+    "APP_BACKGROUND": ("App In Background", "App moved to background.", "fa-mobile-alt", "orange"),
+    "APP_FOREGROUND": ("App In Foreground", "App returned to foreground.", "fa-mobile-alt", "blue"),
+    "BATTERY_LOW": ("Battery Low", "Battery dropped below 15%.", "fa-battery-quarter", "orange"),
+    "TRIP_EXTENDED": ("Trip Extended", "Trip extended by user.", "fa-arrows-alt", "blue"),
+    "FOREGROUND_SERVICE_STARTED": ("Background Service Started", "App went to background - foreground service now records GPS.", "fa-cogs", "blue"),
+    "FOREGROUND_SERVICE_STOPPED": ("Background Service Stopped", "In-app GPS stream took over (app in foreground / trip ended).", "fa-cogs", "green"),
+    "BATTERY_OPTIMIZATION_EXEMPTED": ("Battery Optimization Exempted", "App is exempt - OS will not kill tracking.", "fa-shield", "green"),
+    "BATTERY_OPTIMIZATION_ACTIVE": ("Battery Optimization ON", "Battery optimization still active - OS may stop tracking when screen is off.", "fa-shield", "orange"),
+}
+
+
+def _build_health_summary(entries):
+    """
+    Compute a one-glance health summary from the full 10s status log.
+    Durations are estimated from consecutive STATUS entry timestamps
+    (capped so app-killed gaps are not counted as offline time).
+    """
+    summary = {
+        "has_log": bool(entries),
+        "total_entries": len(entries),
+        "logged_from": entries[0].get("t") if entries else None,
+        "logged_to": entries[-1].get("t") if entries else None,
+        "offline_seconds": 0,
+        "gps_off_seconds": 0,
+        "online_pct": 100,
+        "sync_failures": 0,
+        "max_pending_points": 0,
+        "final_pending_points": 0,
+        "min_battery": None,
+        "background_count": 0,
+        "longest_offline_seconds": 0,
+    }
+
+    if not entries:
+        return summary
+
+    def _parse_ts(value):
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    status_entries = [e for e in entries if e.get("e") == "STATUS"]
+    prev_ts = None
+    current_offline_run = 0
+
+    for e in status_entries:
+        ts = _parse_ts(e.get("t"))
+        net = (e.get("net") or {}).get("on")
+        gps_on = (e.get("gps") or {}).get("on")
+
+        # Time covered by this entry = gap to previous entry (cap at 60s)
+        step = 10
+        if ts and prev_ts:
+            step = min(max((ts - prev_ts).total_seconds(), 0), 60)
+        if ts:
+            prev_ts = ts
+
+        if net is False:
+            summary["offline_seconds"] += step
+            current_offline_run += step
+        else:
+            summary["longest_offline_seconds"] = max(
+                summary["longest_offline_seconds"], current_offline_run
+            )
+            current_offline_run = 0
+
+        if gps_on is False:
+            summary["gps_off_seconds"] += step
+
+        bat = (e.get("bat") or {}).get("lvl")
+        if isinstance(bat, (int, float)):
+            if summary["min_battery"] is None or bat < summary["min_battery"]:
+                summary["min_battery"] = bat
+
+        pend = (e.get("pts") or {}).get("pend")
+        if isinstance(pend, (int, float)):
+            summary["max_pending_points"] = max(summary["max_pending_points"], int(pend))
+            summary["final_pending_points"] = int(pend)
+
+    summary["longest_offline_seconds"] = max(
+        summary["longest_offline_seconds"], current_offline_run
+    )
+
+    summary["sync_failures"] = sum(
+        1
+        for e in entries
+        if e.get("e") == "SYNC_FAILED"
+        or (e.get("e") == "SYNC_CHECK" and e.get("result") == "FAIL")
+    )
+    summary["background_count"] = sum(1 for e in entries if e.get("e") == "APP_BACKGROUND")
+
+    # Online % over measured status time (each STATUS entry ~10s)
+    approx_total = len(status_entries) * 10
+    if approx_total > 0:
+        online = approx_total - summary["offline_seconds"]
+        summary["online_pct"] = round(max(online, 0) * 100.0 / approx_total, 1)
+
+    return summary
+
+
+def _build_health_log_display(entries, status_sample_interval=6):
+    """
+    Downsample the full log for the page payload:
+    - every event entry (NETWORK_LOST, SYNC_FAILED, ...) is kept
+    - SYNC_CHECK failures are kept
+    - STATUS entries are sampled (default: every 6th = once per minute)
+    """
+    display = []
+    status_count = 0
+    for e in entries:
+        etype = e.get("e")
+        if etype == "STATUS":
+            status_count += 1
+            if status_count % status_sample_interval != 1:
+                continue
+        elif etype == "SYNC_CHECK" and e.get("result") != "FAIL":
+            continue
+        display.append(e)
+    return display
+
+
+def _health_events_for_timeline(entries):
+    """
+    Convert health log events into the existing timeline_events format.
+    """
+    events = []
+    for e in entries:
+        etype = e.get("e")
+        meta = HEALTH_EVENT_META.get(etype)
+        if not meta:
+            continue
+        title, details, icon, _color = meta
+        reason = e.get("reason")
+        events.append({
+            "timestamp": e.get("t", ""),
+            "type": etype,
+            "title": title,
+            "details": f"{details} {(' - ' + str(reason)) if reason else ''}".strip(),
+            "icon": icon,
+        })
+    return events
 
 
 @frappe.whitelist()
@@ -224,6 +421,13 @@ def get_trip_telemetry_details(trip_id=None):
             })
 
     end_time_str = str(doc.end_time) if doc.end_time else "In Progress"
+
+    # Trip Health Log (10s device status log from the phone)
+    health_entries = _decode_trip_status_log(getattr(doc, "trip_status_log", None))
+    health_summary = _build_health_summary(health_entries)
+    health_log_display = _build_health_log_display(health_entries)
+    timeline_events.extend(_health_events_for_timeline(health_entries))
+
     end_reason_code = meta.get("end_reason") or ("User manually tapped End Journey" if doc.status == "Completed" else "Trip still active")
     
     reason_map = {
@@ -265,5 +469,7 @@ def get_trip_telemetry_details(trip_id=None):
         "end_reason": human_end_reason,
         "raw_gps_data": raw_gps,
         "telemetry": telemetry,
-        "timeline_events": timeline_events
+        "timeline_events": timeline_events,
+        "health_summary": health_summary,
+        "health_log": health_log_display
     }

@@ -531,6 +531,7 @@ def store_journey(journey_data):
             "scheduled_start_time": journey_data.get("scheduled_start_time"),
             "scheduled_end_time": journey_data.get("scheduled_end_time"),
             "destination_address": journey_data.get("destination_address"),
+            "trip_status_log": journey_data.get("trip_status_log"),
         }
 
         for field, value in optional_mappings.items():

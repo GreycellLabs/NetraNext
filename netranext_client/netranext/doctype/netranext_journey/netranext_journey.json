@@ -30,7 +30,9 @@
   "simplified_points_count",
   "section_break_3",
   "metadata",
-  "raw_gps_data"
+  "raw_gps_data",
+  "section_break_4",
+  "trip_status_log"
  ],
  "fields": [
   {
@@ -177,13 +179,27 @@
    "label": "Raw GPS Data",
    "options": "JSON",
    "hidden": 1
+  },
+  {
+   "fieldname": "section_break_4",
+   "fieldtype": "Section Break",
+   "label": "Trip Health Log",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "trip_status_log",
+   "fieldtype": "Long Text",
+   "label": "Trip Status Log",
+   "read_only": 1,
+   "description": "Compressed (gzip+base64) device health log recorded every 10s by the mobile app: network, GPS, battery, point sync status. Decoded and shown on the Trip Details page.",
+   "hidden": 1
   }
  ],
  "hide_toolbar": 0,
  "icon": "icon-road",
  "idx": 0,
  "is_submittable": 0,
- "modified": "2025-01-01 00:00:00",
+ "modified": "2026-09-12 00:00:00",
  "modified_by": "Administrator",
  "module": "NetraNext",
  "name": "NetraNext Journey",
