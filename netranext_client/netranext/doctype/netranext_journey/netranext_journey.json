@@ -189,10 +189,9 @@
   {
    "fieldname": "trip_status_log",
    "fieldtype": "Long Text",
-   "label": "Trip Health Log",
+   "label": "Trip Status Log",
    "read_only": 1,
-   "description": "Raw 10s device status log from the phone (network/GPS/battery/sync). Server-side diagnostic data.",
-   "hidden": 0
+   "hidden": 1
   }
  ],
  "hide_toolbar": 0,
