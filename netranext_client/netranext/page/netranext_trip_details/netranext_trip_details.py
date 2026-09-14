@@ -132,126 +132,11 @@ TIMELINE_HEALTH_EVENTS = {
 }
 
 
-def _build_health_summary(entries):
-    """
-    Compute a one-glance health summary from the full 10s status log.
-    Durations are estimated from consecutive STATUS entry timestamps
-    (capped so app-killed gaps are not counted as offline time).
-    """
-    summary = {
-        "has_log": bool(entries),
-        "total_entries": len(entries),
-        "logged_from": entries[0].get("t") if entries else None,
-        "logged_to": entries[-1].get("t") if entries else None,
-        "offline_seconds": 0,
-        "gps_off_seconds": 0,
-        "online_pct": 100,
-        "sync_failures": 0,
-        "max_pending_points": 0,
-        "final_pending_points": 0,
-        "min_battery": None,
-        "background_count": 0,
-        "longest_offline_seconds": 0,
-    }
-
-    if not entries:
-        return summary
-
-    def _parse_ts(value):
-        try:
-            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        except Exception:
-            return None
-
-    status_entries = [e for e in entries if e.get("e") == "STATUS"]
-    prev_ts = None
-    current_offline_run = 0
-
-    for e in status_entries:
-        ts = _parse_ts(e.get("t"))
-        net = (e.get("net") or {}).get("on")
-        gps_on = (e.get("gps") or {}).get("on")
-
-        # Time covered by this entry = gap to previous entry (cap at 60s)
-        step = 10
-        if ts and prev_ts:
-            step = min(max((ts - prev_ts).total_seconds(), 0), 60)
-        if ts:
-            prev_ts = ts
-
-        if net is False:
-            summary["offline_seconds"] += step
-            current_offline_run += step
-        else:
-            summary["longest_offline_seconds"] = max(
-                summary["longest_offline_seconds"], current_offline_run
-            )
-            current_offline_run = 0
-
-        if gps_on is False:
-            summary["gps_off_seconds"] += step
-
-        bat = (e.get("bat") or {}).get("lvl")
-        if isinstance(bat, (int, float)):
-            if summary["min_battery"] is None or bat < summary["min_battery"]:
-                summary["min_battery"] = bat
-
-        pend = (e.get("pts") or {}).get("pend")
-        if isinstance(pend, (int, float)):
-            summary["max_pending_points"] = max(summary["max_pending_points"], int(pend))
-            summary["final_pending_points"] = int(pend)
-
-    summary["longest_offline_seconds"] = max(
-        summary["longest_offline_seconds"], current_offline_run
-    )
-
-    summary["sync_failures"] = sum(
-        1
-        for e in entries
-        if e.get("e") == "SYNC_FAILED"
-        or (e.get("e") == "SYNC_CHECK" and e.get("result") == "FAIL")
-    )
-    summary["background_count"] = sum(1 for e in entries if e.get("e") == "APP_BACKGROUND")
-
-    # Online % over measured status time (each STATUS entry ~10s)
-    approx_total = len(status_entries) * 10
-    if approx_total > 0:
-        online = approx_total - summary["offline_seconds"]
-        summary["online_pct"] = round(max(online, 0) * 100.0 / approx_total, 1)
-
-    return summary
-
-
-def _build_health_log_display(entries, status_sample_interval=6):
-    """
-    Downsample the full log for the page payload:
-    - every event entry (NETWORK_LOST, SYNC_FAILED, ...) is kept
-    - SYNC_CHECK failures are kept
-    - STATUS entries are sampled (default: every 6th = once per minute)
-    """
-    display = []
-    status_count = 0
-    for e in entries:
-        e = dict(e)
-        # Normalize health log times for display (see _iso_display_tz_str)
-        if e.get("t"):
-            e["t"] = _iso_display_tz_str(e.get("t")) or e.get("t")
-        etype = e.get("e")
-        if etype == "STATUS":
-            status_count += 1
-            if status_count % status_sample_interval != 1:
-                continue
-        elif etype == "SYNC_CHECK" and e.get("result") != "FAIL":
-            continue
-        display.append(e)
-    return display
-
-
 def _health_events_for_timeline(entries):
     """
     Convert health log connection events into the timeline_events format.
     Only network lost/back events are surfaced (User Offline / User Online);
-    all other health events stay in the Trip Health Log card.
+    the full health log remains server-side only.
     """
     events = []
     for e in entries:
@@ -523,9 +408,9 @@ def get_trip_telemetry_details(trip_id=None):
     })
 
     # Trip Health Log (10s device status log from the phone)
+    # Decoded for timeline connection events and telemetry only; the full log
+    # and its summary are server-side data and are NOT sent to the client page.
     health_entries = _decode_trip_status_log(getattr(doc, "trip_status_log", None))
-    health_summary = _build_health_summary(health_entries)
-    health_log_display = _build_health_log_display(health_entries)
 
     # User Offline / User Online events from the health log (current source)
     connection_events = _health_events_for_timeline(health_entries)
@@ -602,7 +487,5 @@ def get_trip_telemetry_details(trip_id=None):
         "end_reason": human_end_reason,
         "raw_gps_data": raw_gps,
         "telemetry": telemetry,
-        "timeline_events": timeline_events,
-        "health_summary": health_summary,
-        "health_log": health_log_display
+        "timeline_events": timeline_events
     }

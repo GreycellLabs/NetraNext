@@ -189,10 +189,10 @@
   {
    "fieldname": "trip_status_log",
    "fieldtype": "Long Text",
-   "label": "Trip Status Log",
+   "label": "Trip Health Log",
    "read_only": 1,
-   "description": "Compressed (gzip+base64) device health log recorded every 10s by the mobile app: network, GPS, battery, point sync status. Decoded and shown on the Trip Details page.",
-   "hidden": 1
+   "description": "Raw 10s device status log from the phone (network/GPS/battery/sync). Server-side diagnostic data.",
+   "hidden": 0
   }
  ],
  "hide_toolbar": 0,
