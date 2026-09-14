@@ -938,13 +938,16 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
         
         # Add scheduled trips
         for s_trip in scheduled_trips:
+            # Frappe stores datetimes in UTC; append 'Z' so the mobile app
+            # parses them as UTC and converts to the device's local time
+            # (a bare str() yields a naive string the app can't interpret).
             journeys.append({
                 "id": s_trip.name,
                 "tripId": s_trip.name,
                 "userId": user_id,
                 "status": s_trip.status,
-                "scheduledStartTime": str(s_trip.scheduled_start_time) if s_trip.scheduled_start_time else None,
-                "scheduledEndTime": str(s_trip.scheduled_end_time) if s_trip.scheduled_end_time else None,
+                "scheduledStartTime": (s_trip.scheduled_start_time.isoformat() + "Z") if s_trip.scheduled_start_time else None,
+                "scheduledEndTime": (s_trip.scheduled_end_time.isoformat() + "Z") if s_trip.scheduled_end_time else None,
                 "destinationAddress": s_trip.destination_address,
                 "isActive": False,
                 "points": [],

@@ -60,6 +60,58 @@ def _decode_trip_status_log(raw):
     return entries
 
 
+def _utc_to_system_tz_str(value):
+    """
+    Convert a UTC timestamp to the system timezone and format it as
+    'YYYY-MM-DD HH:mm:ss' for display.
+
+    Used for Frappe Datetime docfields (always stored in UTC) - both
+    datetime objects and naive 'YYYY-MM-DD HH:mm:ss' strings.
+    Returns None when value is empty; falls back to the raw string when it
+    cannot be parsed.
+    """
+    if not value:
+        return None
+
+    try:
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return str(value)
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    local_dt = frappe.utils.convert_utc_to_system_timezone(dt).replace(tzinfo=None)
+    return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _iso_display_tz_str(value):
+    """
+    Normalize an ISO timestamp from the mobile app for display.
+
+    - Strings with a UTC marker ('Z' or offset): UTC -> system timezone.
+    - Naive strings without a marker: older app versions recorded the
+      phone's local wall time in the health log - show them as-is
+      (only normalized to a consistent format for sorting).
+    """
+    if not value:
+        return None
+
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return str(value)
+
+    if dt.tzinfo is None:
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    local_dt = frappe.utils.convert_utc_to_system_timezone(dt).replace(tzinfo=None)
+    return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
 # The Event Timeline intentionally shows ONLY 4 event types:
 # 1. Trip Started  2. Trip Ended  3. User Offline  4. User Online
 # (Trip Start/End are built from the Journey doc fields; only network
@@ -180,6 +232,10 @@ def _build_health_log_display(entries, status_sample_interval=6):
     display = []
     status_count = 0
     for e in entries:
+        e = dict(e)
+        # Normalize health log times for display (see _iso_display_tz_str)
+        if e.get("t"):
+            e["t"] = _iso_display_tz_str(e.get("t")) or e.get("t")
         etype = e.get("e")
         if etype == "STATUS":
             status_count += 1
@@ -206,7 +262,7 @@ def _health_events_for_timeline(entries):
         title, details, icon = meta
         reason = e.get("reason")
         events.append({
-            "timestamp": e.get("t", ""),
+            "timestamp": _iso_display_tz_str(e.get("t")) or "",
             "type": etype,
             "title": title,
             "details": f"{details} {(' - ' + str(reason)) if reason else ''}".strip(),
@@ -327,16 +383,19 @@ def get_all_trips_summary(employee=None, status=None, date=None, search=None, li
 
     for j in journeys:
         # Format Start Time (DD-MM-YYYY HH:mm:ss) & Journey Date
+        # Convert from UTC (storage) to system timezone for display
         start_time_str = "-"
         journey_date_str = "-"
         if j.start_time:
-            try:
-                dt = j.start_time if isinstance(j.start_time, datetime) else datetime.fromisoformat(str(j.start_time).replace("Z", ""))
-                start_time_str = dt.strftime("%d-%m-%Y %H:%M:%S")
-                journey_date_str = dt.strftime("%d-%m-%Y")
-            except Exception:
-                start_time_str = str(j.start_time)
-                journey_date_str = str(j.start_time).split(" ")[0] if " " in str(j.start_time) else str(j.start_time)
+            local_str = _utc_to_system_tz_str(j.start_time)
+            if local_str:
+                try:
+                    dt = datetime.strptime(local_str, "%Y-%m-%d %H:%M:%S")
+                    start_time_str = dt.strftime("%d-%m-%Y %H:%M:%S")
+                    journey_date_str = dt.strftime("%d-%m-%Y")
+                except Exception:
+                    start_time_str = local_str
+                    journey_date_str = local_str.split(" ")[0] if " " in local_str else local_str
 
         j["start_time_formatted"] = start_time_str
         j["journey_date"] = journey_date_str
@@ -453,7 +512,8 @@ def get_trip_telemetry_details(trip_id=None):
     # The timeline shows ONLY: Trip Started, User Offline, User Online, Trip Ended
     timeline_events = []
 
-    start_time_str = str(doc.start_time) if doc.start_time else "N/A"
+    # Convert from UTC (Frappe storage / mobile app) to system timezone
+    start_time_str = _utc_to_system_tz_str(doc.start_time) or "N/A"
     timeline_events.append({
         "timestamp": start_time_str,
         "type": "TRIP_START",
@@ -476,7 +536,7 @@ def get_trip_telemetry_details(trip_id=None):
         legacy_network_events = (meta.get("telemetry") or {}).get("network_events", [])
         for net_ev in legacy_network_events:
             event_type = net_ev.get("event", "")
-            ts = net_ev.get("timestamp", start_time_str)
+            ts = _iso_display_tz_str(net_ev.get("timestamp")) or start_time_str
             if event_type == "OFFLINE_DISCONNECT":
                 connection_events.append({
                     "timestamp": ts,
@@ -499,7 +559,7 @@ def get_trip_telemetry_details(trip_id=None):
     # Device & Telemetry card payload (merged from health log + metadata)
     telemetry = _build_device_telemetry(meta, health_entries, raw_gps)
 
-    end_time_str = str(doc.end_time) if doc.end_time else "In Progress"
+    end_time_str = _utc_to_system_tz_str(doc.end_time) or "In Progress"
 
     end_reason_code = meta.get("end_reason") or ("User manually tapped End Journey" if doc.status == "Completed" else "Trip still active")
     
@@ -532,7 +592,7 @@ def get_trip_telemetry_details(trip_id=None):
         "employee_id": doc.employee,
         "employee_name": employee_name,
         "status": doc.status,
-        "journey_date": str(doc.start_time).split(" ")[0] if doc.start_time else "",
+        "journey_date": start_time_str.split(" ")[0] if doc.start_time else "",
         "start_time": start_time_str,
         "end_time": end_time_str,
         "start_location": doc.start_location or "N/A",
