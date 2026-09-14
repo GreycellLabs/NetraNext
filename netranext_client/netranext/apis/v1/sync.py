@@ -1536,3 +1536,64 @@ def get_shift_reminders():
         frappe.log_error(title="Shift Reminders Client Exception", message=f"{str(e)}\nLogs:\n" + "\n".join(debug_logs))
         return handle_api_exception(e, "EMPLOYEE_SYNC")
 
+@frappe.whitelist(allow_guest=True)
+def get_upcoming_trips():
+    """
+    Get each employee's next upcoming Scheduled Trip (status == "Scheduled",
+    scheduled_start_time in the future). Called by central server to dispatch
+    upcoming-trip push notifications. Only the earliest upcoming trip per
+    employee is returned.
+    """
+    debug_logs = []
+    try:
+        validate_sync_request()
+
+        import math
+
+        now = frappe.utils.now_datetime()
+
+        # Earliest upcoming Scheduled Trip per employee
+        trips = frappe.get_all(
+            "Scheduled Trip",
+            filters={
+                "status": "Scheduled",
+                "scheduled_start_time": [">=", now],
+            },
+            fields=["name", "employee", "destination_address", "scheduled_start_time"],
+            order_by="scheduled_start_time asc",
+        )
+
+        earliest_by_employee = {}
+        for trip in trips:
+            if trip.employee not in earliest_by_employee:
+                earliest_by_employee[trip.employee] = trip
+
+        debug_logs.append(f"Now: {now}. Scheduled trips found: {len(trips)}, employees: {len(earliest_by_employee)}")
+
+        result = []
+        for employee, trip in earliest_by_employee.items():
+            emp = frappe.db.get_value(
+                "Employee", employee, ["employee_name", "user_id"], as_dict=True
+            )
+            if not emp or not emp.user_id:
+                debug_logs.append(f"Employee {employee} skipped: no linked User.")
+                continue
+
+            minutes_until = math.ceil((trip.scheduled_start_time - now).total_seconds() / 60)
+            result.append({
+                "user_id": emp.user_id,
+                "employee_name": emp.employee_name,
+                "trip_id": trip.name,
+                "destination_address": trip.destination_address,
+                "scheduled_start_time": trip.scheduled_start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "minutes_until_start": minutes_until,
+            })
+            debug_logs.append(f"  Next trip for {emp.employee_name}: {trip.name} in {minutes_until} minutes.")
+
+        frappe.log_error(title="Upcoming Trips Client Debug", message="\n".join(debug_logs))
+        return create_success_response("Upcoming trips retrieved successfully", result)
+
+    except Exception as e:
+        frappe.log_error(title="Upcoming Trips Client Exception", message=f"{str(e)}\nLogs:\n" + "\n".join(debug_logs))
+        return handle_api_exception(e, "EMPLOYEE_SYNC")
+
