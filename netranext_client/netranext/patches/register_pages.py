@@ -159,8 +159,6 @@ def execute():
             user_doc.default_workspace = "NetraNext"
             users_updated += 1
         user_doc.save(ignore_permissions=True)
-    if users_updated:
-        frappe.db.commit()
-        print(f"✅ Set default_workspace to NetraNext for {users_updated} user(s).")
-
+    frappe.clear_cache()
     print("🚀 NetraNext pages and workspace registration completed!")
+

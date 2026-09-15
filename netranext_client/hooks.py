@@ -10,16 +10,15 @@ app_license = "mit"
 
 # required_apps = []
 
-# Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "netranext_client",
-# 		"logo": "/assets/netranext_client/logo.png",
-# 		"title": "NetraNext Client",
-# 		"route": "/netranext_client",
-# 		"has_permission": "netranext_client.api.permission.has_app_permission"
-# 	}
-# ]
+add_to_apps_screen = [
+	{
+		"name": "netranext_client",
+		"logo": "/assets/netranext_client/images/netranext-logo.svg",
+		"title": "NetraNext",
+		"route": "/app/netranext",
+	}
+]
+
 
 # Includes in <head>
 # ------------------
