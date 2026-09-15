@@ -156,27 +156,56 @@ def _health_events_for_timeline(entries):
     return events
 
 
+def _app_journey_metadata(meta):
+    """
+    Return the mobile app journey's own metadata dict.
+
+    The central server stores the app's full journey JSON wrapped as
+    ``metadata.flutter_data`` (see netranext.apis.v1.journey.create_journeys),
+    so the phone's end-reason + telemetry actually live at
+    ``flutter_data.metadata.{end_reason, telemetry}`` - NOT at the top level
+    of the doc metadata. Older shapes kept them at the top level; support both.
+    """
+    if not isinstance(meta, dict):
+        return {}
+    inner = (meta.get("flutter_data") or {}).get("metadata") or {}
+    if isinstance(inner, dict) and inner:
+        return inner
+    return meta
+
+
 def _build_device_telemetry(meta, health_entries, raw_gps):
     """
     Build the Device & Telemetry card payload.
 
-    Device details arrive from two sources:
+    Device details arrive from three sources (first found wins per field):
+    - the app telemetry embedded in the journey payload
+      (metadata.flutter_data.metadata.telemetry.{device,battery,gps_stats})
     - the trip health log (battery level, network type, GPS points recorded
       every 10s on the phone) stored in trip_status_log
-    - device model / OS version sent by the app inside the journey payload
-      (metadata.flutter_data.deviceInfo)
-
-    Older trips may additionally carry a legacy telemetry dict inside
-    metadata. Everything available is merged so the card always shows the
-    device details that were actually received.
+    - legacy shapes: top-level metadata.telemetry / flutter_data.deviceInfo
     """
+    app_meta = _app_journey_metadata(meta)
+
     legacy = meta.get("telemetry") or {}
+    app_telemetry = app_meta.get("telemetry") or {}
+
     device = dict(legacy.get("device") or {})
     battery = dict(legacy.get("battery") or {})
     gps_stats = dict(legacy.get("gps_stats") or {})
 
-    flutter_data = meta.get("flutter_data") or {}
-    device_info = flutter_data.get("deviceInfo") or {}
+    # Current storage shape: telemetry nested inside flutter_data.metadata
+    for section, target in (
+        ("device", device),
+        ("battery", battery),
+        ("gps_stats", gps_stats),
+    ):
+        for key, value in (app_telemetry.get(section) or {}).items():
+            if value is not None:
+                target.setdefault(key, value)
+
+    # Older payload shape: flat deviceInfo next to flutter_data
+    device_info = (meta.get("flutter_data") or {}).get("deviceInfo") or {}
     if device_info.get("model"):
         device.setdefault("model", device_info["model"])
     if device_info.get("os_version"):
@@ -416,9 +445,14 @@ def get_trip_telemetry_details(trip_id=None):
     connection_events = _health_events_for_timeline(health_entries)
 
     # Fallback for trips recorded before the health log existed: legacy
-    # network events embedded in the metadata telemetry
+    # network events embedded in the metadata telemetry (top level or inside
+    # the wrapped flutter_data payload)
     if not connection_events:
-        legacy_network_events = (meta.get("telemetry") or {}).get("network_events", [])
+        legacy_network_events = (
+            (meta.get("telemetry") or {}).get("network_events")
+            or (_app_journey_metadata(meta).get("telemetry") or {}).get("network_events")
+            or []
+        )
         for net_ev in legacy_network_events:
             event_type = net_ev.get("event", "")
             ts = _iso_display_tz_str(net_ev.get("timestamp")) or start_time_str
@@ -446,7 +480,11 @@ def get_trip_telemetry_details(trip_id=None):
 
     end_time_str = _utc_to_system_tz_str(doc.end_time) or "In Progress"
 
-    end_reason_code = meta.get("end_reason") or ("User manually tapped End Journey" if doc.status == "Completed" else "Trip still active")
+    end_reason_code = (
+        meta.get("end_reason")
+        or _app_journey_metadata(meta).get("end_reason")
+        or ("User manually tapped End Journey" if doc.status == "Completed" else "Trip still active")
+    )
     
     reason_map = {
         "MANUAL_USER_BUTTON_TAP": "User manually tapped 'End Journey' in mobile app",
