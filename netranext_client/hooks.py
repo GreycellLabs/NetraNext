@@ -16,6 +16,7 @@ add_to_apps_screen = [
 		"logo": "/assets/netranext_client/images/netranext-logo.svg",
 		"title": "NetraNext",
 		"route": "/app/netranext",
+		"has_permission": "netranext_client.netranext.boot.has_app_permission",
 	}
 ]
 
