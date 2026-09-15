@@ -31,6 +31,7 @@
   "section_break_3",
   "metadata",
   "raw_gps_data",
+  "snapped_coordinates",
   "section_break_4",
   "trip_status_log"
  ],
@@ -48,34 +49,32 @@
    "fieldtype": "Data",
    "label": "Journey Name",
    "length": 512,
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
    "options": "In Progress\nCompleted\nCancelled",
-   "default": "In Progress"
+   "default": "In Progress",
+   "in_list_view": 1
   },
   {
    "fieldname": "section_break_0",
    "fieldtype": "Section Break",
-   "label": "Flutter Integration",
-   "hidden": 1
+   "label": "Identifiers"
   },
   {
    "fieldname": "flutter_journey_id",
    "fieldtype": "Data",
    "label": "Flutter Journey ID",
-   "read_only": 1,
-   "description": "UUID from Flutter app"
+   "unique": 1
   },
   {
    "fieldname": "user_id",
    "fieldtype": "Data",
-   "label": "User ID",
-   "read_only": 1,
-   "description": "User ID from Flutter app"
+   "label": "User ID"
   },
   {
    "fieldname": "column_break_0",
@@ -84,38 +83,26 @@
   {
    "fieldname": "section_break_1",
    "fieldtype": "Section Break",
-   "label": "Journey Details"
+   "label": "Journey Overview"
   },
   {
    "fieldname": "start_time",
    "fieldtype": "Datetime",
    "label": "Start Time",
-   "read_only": 1,
    "in_list_view": 1
   },
   {
    "fieldname": "end_time",
    "fieldtype": "Datetime",
    "label": "End Time",
-   "read_only": 1
+   "in_list_view": 1
   },
   {
    "fieldname": "distance_km",
    "fieldtype": "Float",
    "label": "Distance (km)",
-   "read_only": 1,
    "precision": "2",
    "in_list_view": 1
-  },
-  {
-   "fieldname": "duration_seconds",
-   "fieldtype": "Duration",
-   "label": "Duration",
-   "read_only": 1,
-   "precision": "0",
-   "in_list_view": 1,
-   "hide_seconds": 1,
-   "hide_days": 1
   },
   {
    "fieldname": "column_break_1",
@@ -125,26 +112,28 @@
    "fieldname": "start_location",
    "fieldtype": "Data",
    "label": "Start Location",
-   "read_only": 1
+   "length": 512
   },
   {
    "fieldname": "end_location",
    "fieldtype": "Data",
    "label": "End Location",
-   "read_only": 1
+   "length": 512
+  },
+  {
+   "fieldname": "duration_seconds",
+   "fieldtype": "Int",
+   "label": "Duration (Seconds)"
   },
   {
    "fieldname": "section_break_2",
    "fieldtype": "Section Break",
-   "label": "GPS Data",
-   "hidden": 1
+   "label": "Polyline & Points"
   },
   {
    "fieldname": "encoded_polyline",
-   "fieldtype": "Code",
-   "label": "Encoded Polyline",
-   "read_only": 1,
-   "options": "Text"
+   "fieldtype": "Long Text",
+   "label": "Encoded Polyline"
   },
   {
    "fieldname": "column_break_2",
@@ -153,19 +142,18 @@
   {
    "fieldname": "original_points_count",
    "fieldtype": "Int",
-   "label": "Original Points",
-   "read_only": 1
+   "label": "Original Points Count"
   },
   {
    "fieldname": "simplified_points_count",
    "fieldtype": "Int",
-   "label": "Simplified Points",
-   "read_only": 1
+   "label": "Simplified Points Count"
   },
   {
    "fieldname": "section_break_3",
    "fieldtype": "Section Break",
-   "label": "Additional Data"
+   "label": "Raw GPS & Metadata",
+   "collapsible": 1
   },
   {
    "fieldname": "metadata",
@@ -177,6 +165,13 @@
    "fieldname": "raw_gps_data",
    "fieldtype": "Code",
    "label": "Raw GPS Data",
+   "options": "JSON",
+   "hidden": 1
+  },
+  {
+   "fieldname": "snapped_coordinates",
+   "fieldtype": "Code",
+   "label": "Snapped Coordinates",
    "options": "JSON",
    "hidden": 1
   },

@@ -327,6 +327,19 @@
     }
 
     function generate_trip_coordinates(trip) {
+        if (trip.snapped_coordinates) {
+            try {
+                var snapped = typeof trip.snapped_coordinates === 'string'
+                    ? JSON.parse(trip.snapped_coordinates)
+                    : trip.snapped_coordinates;
+                if (snapped && Array.isArray(snapped) && snapped.length > 0) {
+                    return snapped;
+                }
+            } catch (e) {
+                console.error("Error parsing snapped_coordinates:", e);
+            }
+        }
+
         if (trip.raw_coordinates && trip.raw_coordinates.length > 0) {
             return trip.raw_coordinates.map(function(coord) {
                 return [coord.latitude || coord.lat, coord.longitude || coord.lng];
