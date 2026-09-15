@@ -158,8 +158,21 @@
  "owner": "Administrator",
  "public": 1,
  "quick_lists": [],
- "roles": [],
- "sequence_id": 0.0,
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "HR Manager"
+  },
+  {
+   "role": "HR User"
+  },
+  {
+   "role": "All"
+  }
+ ],
+ "sequence_id": 1.0,
  "shortcuts": [
   {
    "color": "Grey",

@@ -111,4 +111,34 @@ def execute():
 
             print(f"✅ Created page: {page_name}")
 
-    print("🚀 NetraNext pages registration completed!")
+    # Register/Update NetraNext Workspace
+    workspace_name = "NetraNext"
+    if frappe.db.exists("Workspace", workspace_name):
+        ws_doc = frappe.get_doc("Workspace", workspace_name)
+        ws_doc.public = 1
+        ws_doc.is_hidden = 0
+        ws_doc.sequence_id = 1.0
+        ws_doc.roles = []
+        for role in roles_to_assign:
+            ws_doc.append("roles", {"role": role})
+        ws_doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        print(f"✅ Updated workspace permissions and sequence for: {workspace_name}")
+    else:
+        print(f"⚠️ Workspace {workspace_name} not found in DB, standard import will create it on migrate.")
+
+    # Set NetraNext as default_workspace for active System Users if unset
+    users_updated = 0
+    system_users = frappe.get_all("User", filters={"user_type": "System User", "enabled": 1}, pluck="name")
+    for user_email in system_users:
+        user_doc = frappe.get_doc("User", user_email)
+        if not user_doc.default_workspace:
+            user_doc.default_workspace = "NetraNext"
+            user_doc.save(ignore_permissions=True)
+            users_updated += 1
+    if users_updated:
+        frappe.db.commit()
+        print(f"✅ Set default_workspace to NetraNext for {users_updated} user(s).")
+
+    print("🚀 NetraNext pages and workspace registration completed!")
+

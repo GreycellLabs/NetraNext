@@ -72,11 +72,12 @@ doctype_js = {"Employee Checkin" : "public/js/employee_checkin.js"}
 # 	"Role": "home_page"
 # }
 
-# Custom Pages
-# -------------
+# Custom Pages & Boot Extensions
+# ------------------------------
 
-# Register custom pages for NetraNext
-app_include_js = "/assets/netranext_client/js/pages.js"
+extend_bootinfo = [
+    "netranext_client.netranext.boot.boot_session"
+]
 
 # Page routes and icons
 pages_dict = {
