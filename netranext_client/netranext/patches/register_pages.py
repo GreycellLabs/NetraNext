@@ -127,18 +127,40 @@ def execute():
     else:
         print(f"⚠️ Workspace {workspace_name} not found in DB, standard import will create it on migrate.")
 
+    # Ensure Installed Application record exists with has_setup_wizard=0 so non-System Managers see NetraNext on Desk
+    if frappe.db.exists("Installed Application", "netranext_client"):
+        frappe.db.set_value("Installed Application", "netranext_client", {
+            "has_setup_wizard": 0,
+            "is_setup_complete": 1
+        })
+        frappe.db.commit()
+    else:
+        try:
+            frappe.get_doc({
+                "doctype": "Installed Application",
+                "app_name": "netranext_client",
+                "app_title": "NetraNext Client",
+                "has_setup_wizard": 0,
+                "is_setup_complete": 1
+            }).insert(ignore_permissions=True)
+            frappe.db.commit()
+        except Exception:
+            pass
+
     # Set NetraNext as default_workspace for active System Users if unset
     users_updated = 0
     system_users = frappe.get_all("User", filters={"user_type": "System User", "enabled": 1}, pluck="name")
     for user_email in system_users:
         user_doc = frappe.get_doc("User", user_email)
+        # Ensure NetraNext is not in block_modules
+        if hasattr(user_doc, "block_modules") and user_doc.block_modules:
+            user_doc.block_modules = [m for m in user_doc.block_modules if m.module != "NetraNext"]
         if not user_doc.default_workspace:
             user_doc.default_workspace = "NetraNext"
-            user_doc.save(ignore_permissions=True)
             users_updated += 1
+        user_doc.save(ignore_permissions=True)
     if users_updated:
         frappe.db.commit()
         print(f"✅ Set default_workspace to NetraNext for {users_updated} user(s).")
 
     print("🚀 NetraNext pages and workspace registration completed!")
-
