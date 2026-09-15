@@ -55,7 +55,15 @@ def execute():
     ]
 
     # Define roles to assign
-    roles_to_assign = ["System Manager", "HR Manager", "HR User"]
+    #
+    # "All" is REQUIRED: every Frappe user automatically holds the built-in
+    # "All" role, and the NetraNext workspace only appears in a user's sidebar
+    # if the user can access at least one Page/DocType of the NetraNext
+    # module (frappe.desk.desktop.Workspace raises PermissionError otherwise,
+    # which the sidebar silently swallows). Without "All" on the pages, users
+    # holding no HR/Employee role lose the whole workspace after login.
+    # Keep this list in sync with the page JSON files (they also ship "All").
+    roles_to_assign = ["System Manager", "HR Manager", "HR User", "All"]
 
     for page_data in netranext_pages:
         page_name = page_data["name"]
