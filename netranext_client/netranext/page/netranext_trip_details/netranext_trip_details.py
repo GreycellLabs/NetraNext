@@ -495,12 +495,21 @@ def get_trip_telemetry_details(trip_id=None):
     }
     human_end_reason = reason_map.get(end_reason_code, end_reason_code)
 
+    resolved_end_location = doc.end_location or meta.get("end_address") or meta.get("destination_address") or _app_journey_metadata(meta).get("end_address")
+    if not resolved_end_location or resolved_end_location == "N/A":
+        if raw_gps and len(raw_gps) > 0:
+            last_pt = raw_gps[-1]
+            lat = last_pt.get("latitude") or last_pt.get("lat")
+            lng = last_pt.get("longitude") or last_pt.get("lng") or last_pt.get("lon")
+            if lat and lng:
+                resolved_end_location = f"{lat}, {lng}"
+
     if doc.status == "Completed":
         timeline_events.append({
             "timestamp": end_time_str,
             "type": "TRIP_END",
             "title": "Trip Ended",
-            "details": f"Ended at {doc.end_location or 'Final Location'}",
+            "details": f"Ended at {resolved_end_location or 'Final Location'}",
             "icon": "fa-flag-checkered"
         })
         if human_end_reason:
@@ -527,7 +536,7 @@ def get_trip_telemetry_details(trip_id=None):
         "start_time": start_time_str,
         "end_time": end_time_str,
         "start_location": doc.start_location or "N/A",
-        "end_location": doc.end_location or "N/A",
+        "end_location": resolved_end_location or "N/A",
         "distance_km": doc.distance_km or 0.0,
         "duration_seconds": getattr(doc, "duration_seconds", None) or 0,
         "end_reason": human_end_reason,
