@@ -102,6 +102,16 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                         <div class="value" id="single-trip-duration">-</div>
                     </div>
                 </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+                    <div class="metric-box" style="width: 100%;">
+                        <div class="label"><i class="fa fa-map-marker-alt text-success"></i> Start Location</div>
+                        <div class="value" id="single-trip-start-location" style="font-size: 12px; font-weight: 500; word-break: break-word;">-</div>
+                    </div>
+                    <div class="metric-box" style="width: 100%;">
+                        <div class="label"><i class="fa fa-flag-checkered text-danger"></i> End Location</div>
+                        <div class="value" id="single-trip-end-location" style="font-size: 12px; font-weight: 500; word-break: break-word;">-</div>
+                    </div>
+                </div>
             </div>
 
             <!-- Two-Column Grid: Timeline & Telemetry Left, Map Right -->
@@ -353,6 +363,8 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         $('#single-trip-employee').text(data.employee_name || data.employee_id);
         $('#single-trip-date').text(data.journey_date || 'N/A');
         $('#single-trip-distance').text((data.distance_km ? data.distance_km.toFixed(2) : '0.00') + ' km');
+        $('#single-trip-start-location').text(data.start_location || 'N/A');
+        $('#single-trip-end-location').text(data.end_location || 'N/A');
 
         // Status badge
         var badge = $('#single-trip-status-badge');
@@ -437,7 +449,6 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                             <div><span style="color: #64748b;">Battery Used:</span> <strong style="color: #0f172a;">${batConsumed}</strong></div>
                             <div><span style="color: #64748b;">GPS Points:</span> <strong style="color: #0f172a;">${totalPts} points</strong></div>
                             <div><span style="color: #64748b;">Accuracy:</span> <strong style="color: #0f172a;">${accuracy}</strong></div>
-                            <div><span style="color: #64748b;">Battery Optimization:</span> <strong style="color: #0f172a;">${batOpt}</strong></div>
                         </div>
                     </div>
                 </div>

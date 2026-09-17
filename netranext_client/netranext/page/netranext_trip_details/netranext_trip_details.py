@@ -500,9 +500,17 @@ def get_trip_telemetry_details(trip_id=None):
             "timestamp": end_time_str,
             "type": "TRIP_END",
             "title": "Trip Ended",
-            "details": f"End Reason: {human_end_reason}",
+            "details": f"Ended at {doc.end_location or 'Final Location'}",
             "icon": "fa-flag-checkered"
         })
+        if human_end_reason:
+            timeline_events.append({
+                "timestamp": end_time_str + " ",
+                "type": "TRIP_END_REASON",
+                "title": "End Reason",
+                "details": human_end_reason,
+                "icon": "fa-info-circle"
+            })
 
     try:
         timeline_events.sort(key=lambda x: str(x["timestamp"]))
