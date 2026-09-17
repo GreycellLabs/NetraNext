@@ -526,6 +526,12 @@ def get_trip_telemetry_details(trip_id=None):
     except Exception:
         pass
 
+    start_odo = getattr(doc, "start_odometer", None) or meta.get("start_odometer")
+    end_odo = getattr(doc, "end_odometer", None) or meta.get("end_odometer")
+    start_n = getattr(doc, "start_notes", None) or meta.get("start_notes")
+    end_n = getattr(doc, "end_notes", None) or meta.get("end_notes")
+    calc_odo_dist = getattr(doc, "calculated_odometer_distance", None) or meta.get("calculated_odometer_distance")
+
     return {
         "trip_id": doc.name,
         "flutter_journey_id": getattr(doc, "flutter_journey_id", None),
@@ -540,6 +546,13 @@ def get_trip_telemetry_details(trip_id=None):
         "distance_km": doc.distance_km or 0.0,
         "duration_seconds": getattr(doc, "duration_seconds", None) or 0,
         "end_reason": human_end_reason,
+        "start_odometer": start_odo,
+        "end_odometer": end_odo,
+        "start_notes": start_n,
+        "end_notes": end_n,
+        "calculated_odometer_distance": calc_odo_dist,
+        "start_odometer_photo": getattr(doc, "start_odometer_photo", None) or meta.get("start_odometer_photo"),
+        "end_odometer_photo": getattr(doc, "end_odometer_photo", None) or meta.get("end_odometer_photo"),
         "raw_gps_data": raw_gps,
         "telemetry": telemetry,
         "timeline_events": timeline_events

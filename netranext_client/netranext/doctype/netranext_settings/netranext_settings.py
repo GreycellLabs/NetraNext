@@ -326,3 +326,22 @@ def reveal_api_key():
 @frappe.whitelist()
 def validate_uploaded_logo(file_url):
     return {"status": "success"}
+
+
+@frappe.whitelist(allow_guest=True)
+def get_settings():
+    """Returns tenant settings dictionary for orchestrator API calls"""
+    try:
+        doc = frappe.get_single("NetraNext Settings")
+        return {
+            "status": "success",
+            "data": {
+                "enable_face_verification": int(getattr(doc, "enable_face_verification", 1) or 0),
+                "enable_odometer_reading": int(getattr(doc, "enable_odometer_reading", 0) or 0),
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }

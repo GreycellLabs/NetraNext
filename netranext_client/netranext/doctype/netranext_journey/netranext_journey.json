@@ -33,7 +33,16 @@
   "raw_gps_data",
   "snapped_coordinates",
   "section_break_4",
-  "trip_status_log"
+  "trip_status_log",
+  "section_break_odometer",
+  "start_odometer",
+  "end_odometer",
+  "column_break_odometer",
+  "start_notes",
+  "end_notes",
+  "calculated_odometer_distance",
+  "start_odometer_photo",
+  "end_odometer_photo"
  ],
  "fields": [
   {
@@ -187,6 +196,50 @@
    "label": "Trip Status Log",
    "read_only": 1,
    "hidden": 1
+  },
+  {
+   "fieldname": "section_break_odometer",
+   "fieldtype": "Section Break",
+   "label": "Odometer & Notes Verification"
+  },
+  {
+   "fieldname": "start_odometer",
+   "fieldtype": "Float",
+   "label": "Start Odometer Reading"
+  },
+  {
+   "fieldname": "end_odometer",
+   "fieldtype": "Float",
+   "label": "End Odometer Reading"
+  },
+  {
+   "fieldname": "column_break_odometer",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "start_notes",
+   "fieldtype": "Small Text",
+   "label": "Start Notes"
+  },
+  {
+   "fieldname": "end_notes",
+   "fieldtype": "Small Text",
+   "label": "End Notes"
+  },
+  {
+   "fieldname": "calculated_odometer_distance",
+   "fieldtype": "Float",
+   "label": "Calculated Odometer Distance (km)"
+  },
+  {
+   "fieldname": "start_odometer_photo",
+   "fieldtype": "Attach Image",
+   "label": "Start Odometer Photo"
+  },
+  {
+   "fieldname": "end_odometer_photo",
+   "fieldtype": "Attach Image",
+   "label": "End Odometer Photo"
   }
  ],
  "hide_toolbar": 0,

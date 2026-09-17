@@ -135,6 +135,19 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                         </div>
                     </div>
 
+                    <!-- Odometer & Verification Details Card -->
+                    <div class="frappe-card collapsible-card" id="single-trip-odometer-card" style="display: none;">
+                        <div class="card-expand-header" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; padding-bottom: 2px;">
+                            <h5 style="font-weight: 600; margin: 0; font-size: 13px; color: #334155;">
+                                <i class="fa fa-tachometer-alt text-warning"></i> Odometer & Verification Details
+                            </h5>
+                            <i class="fa fa-chevron-up toggle-chevron" style="color: #94a3b8; font-size: 11px; transition: transform 0.2s ease;"></i>
+                        </div>
+                        <div class="card-expand-content" style="margin-top: 12px;">
+                            <div id="single-trip-odometer-container"></div>
+                        </div>
+                    </div>
+
                     <!-- Device & Telemetry Details Card -->
                     <div class="frappe-card collapsible-card">
                         <div class="card-expand-header" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; padding-bottom: 2px;">
@@ -387,11 +400,77 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         // Render Chronological Timeline (Left)
         page.render_timeline(data.timeline_events);
 
+        // Render Odometer & Verification Details (Left)
+        page.render_odometer(data);
+
         // Render Telemetry & Device Info (Left)
         page.render_telemetry(data.telemetry);
 
         // Render Leaflet Map (Right)
         page.render_map(data.raw_gps_data);
+    };
+
+    page.render_odometer = function(data) {
+        var card = $('#single-trip-odometer-card');
+        var container = $('#single-trip-odometer-container');
+        container.empty();
+
+        var hasOdo = data.start_odometer !== undefined && data.start_odometer !== null ||
+                     data.end_odometer !== undefined && data.end_odometer !== null ||
+                     data.start_notes || data.end_notes ||
+                     data.start_odometer_photo || data.end_odometer_photo;
+
+        if (!hasOdo) {
+            card.hide();
+            return;
+        }
+
+        card.show();
+
+        var calcDist = data.calculated_odometer_distance !== undefined && data.calculated_odometer_distance !== null
+            ? data.calculated_odometer_distance.toFixed(2) + ' km'
+            : 'N/A';
+
+        var startPhotoHtml = data.start_odometer_photo
+            ? `<div style="margin-top: 6px;"><a href="${data.start_odometer_photo}" target="_blank"><img src="${data.start_odometer_photo}" style="max-width: 100%; max-height: 120px; border-radius: 6px; border: 1px solid #cbd5e1;" /></a></div>`
+            : '<span style="color: #94a3b8; font-size: 11px;">No photo</span>';
+
+        var endPhotoHtml = data.end_odometer_photo
+            ? `<div style="margin-top: 6px;"><a href="${data.end_odometer_photo}" target="_blank"><img src="${data.end_odometer_photo}" style="max-width: 100%; max-height: 120px; border-radius: 6px; border: 1px solid #cbd5e1;" /></a></div>`
+            : '<span style="color: #94a3b8; font-size: 11px;">No photo</span>';
+
+        var html = `
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <!-- Start Odometer Box -->
+                    <div style="background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <div style="font-size: 11px; font-weight: 700; color: #1e293b; text-transform: uppercase; margin-bottom: 4px;">
+                            <i class="fa fa-play text-success"></i> Start Odometer
+                        </div>
+                        <div style="font-size: 16px; font-weight: 700; color: #047857;">${data.start_odometer !== undefined && data.start_odometer !== null ? data.start_odometer + ' km' : 'N/A'}</div>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 4px;"><strong>Notes:</strong> ${data.start_notes || 'N/A'}</div>
+                        ${startPhotoHtml}
+                    </div>
+
+                    <!-- End Odometer Box -->
+                    <div style="background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <div style="font-size: 11px; font-weight: 700; color: #1e293b; text-transform: uppercase; margin-bottom: 4px;">
+                            <i class="fa fa-flag-checkered text-danger"></i> End Odometer
+                        </div>
+                        <div style="font-size: 16px; font-weight: 700; color: #b91c1c;">${data.end_odometer !== undefined && data.end_odometer !== null ? data.end_odometer + ' km' : 'N/A'}</div>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 4px;"><strong>Notes:</strong> ${data.end_notes || 'N/A'}</div>
+                        ${endPhotoHtml}
+                    </div>
+                </div>
+
+                <div style="background: #ecfdf5; padding: 8px 12px; border-radius: 6px; border: 1px solid #a7f3d0; font-size: 12px; color: #065f46; display: flex; justify-content: space-between; align-items: center;">
+                    <span><strong>Calculated Odometer Difference:</strong></span>
+                    <strong style="font-size: 14px;">${calcDist}</strong>
+                </div>
+            </div>
+        `;
+
+        container.html(html);
     };
 
     page.render_telemetry = function(telemetry) {

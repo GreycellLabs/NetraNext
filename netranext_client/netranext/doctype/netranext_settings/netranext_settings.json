@@ -16,6 +16,7 @@
   "status",
   "payable_account",
   "enable_face_verification",
+  "enable_odometer_reading",
   "offline_timeout_minutes",
   "api_credentials_section",
   "central_server_url",
@@ -75,6 +76,13 @@
    "fieldname": "enable_face_verification",
    "fieldtype": "Check",
    "label": "Enable Face Verification"
+  },
+  {
+   "default": "0",
+   "description": "Require start/end odometer photo, meter reading number, and notes when starting and ending trips.",
+   "fieldname": "enable_odometer_reading",
+   "fieldtype": "Check",
+   "label": "Enable Odometer Reading"
   },
   {
    "fieldname": "column_break_top",
