@@ -15,6 +15,7 @@
   "column_break_top",
   "status",
   "payable_account",
+  "enable_face_verification",
   "offline_timeout_minutes",
   "api_credentials_section",
   "central_server_url",
@@ -67,6 +68,13 @@
    "reqd": 1,
    "options": "Account",
    "description": "Default account to use when submitting expense claims"
+  },
+  {
+   "default": "1",
+   "description": "Require camera face scanner when marking check-in and check-out. If unchecked, direct button tap is enabled.",
+   "fieldname": "enable_face_verification",
+   "fieldtype": "Check",
+   "label": "Enable Face Verification"
   },
   {
    "fieldname": "column_break_top",
