@@ -1505,7 +1505,19 @@ def get_shift_reminders():
             time_since_end = (now_naive - end_dt).total_seconds() / 60
             debug_logs.append(f"  Check-out: time_since_end = {time_since_end:.2f} minutes.")
             if 0 <= time_since_end <= 15:
-                # Check if check-out log exists for today within the end threshold (convert to UTC for database query)
+                # 1. Verify employee actually checked in for this shift
+                checkin_threshold_utc = to_utc(start_dt - timedelta(hours=2))
+                checkin_exists = frappe.db.exists("Employee Checkin", {
+                    "employee": emp.name,
+                    "log_type": "IN",
+                    "time": [">=", checkin_threshold_utc]
+                })
+
+                if not checkin_exists:
+                    debug_logs.append("  Check-out: Skipped because employee never checked in for this shift.")
+                    continue
+
+                # 2. Check if check-out log exists for today within the end threshold
                 checkout_threshold_utc = to_utc(end_dt - timedelta(hours=2))
                 checkout_exists = frappe.db.exists("Employee Checkin", {
                     "employee": emp.name,
