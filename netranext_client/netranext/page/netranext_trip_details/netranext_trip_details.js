@@ -102,16 +102,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                         <div class="value" id="single-trip-duration">-</div>
                     </div>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
-                    <div class="metric-box" style="width: 100%;">
-                        <div class="label"><i class="fa fa-map-marker-alt text-success"></i> Start Location</div>
-                        <div class="value" id="single-trip-start-location" style="font-size: 12px; font-weight: 500; word-break: break-word;">-</div>
-                    </div>
-                    <div class="metric-box" style="width: 100%;">
-                        <div class="label"><i class="fa fa-flag-checkered text-danger"></i> End Location</div>
-                        <div class="value" id="single-trip-end-location" style="font-size: 12px; font-weight: 500; word-break: break-word;">-</div>
-                    </div>
-                </div>
+                <!-- Start/End Location cards removed: locations are shown in the Event Timeline -->
             </div>
 
             <!-- Two-Column Grid: Timeline & Telemetry Left, Map Right -->
@@ -376,8 +367,6 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         $('#single-trip-employee').text(data.employee_name || data.employee_id);
         $('#single-trip-date').text(data.journey_date || 'N/A');
         $('#single-trip-distance').text((data.distance_km ? data.distance_km.toFixed(2) : '0.00') + ' km');
-        $('#single-trip-start-location').text(data.start_location || 'N/A');
-        $('#single-trip-end-location').text(data.end_location || 'N/A');
 
         // Status badge
         var badge = $('#single-trip-status-badge');
@@ -431,13 +420,25 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             ? data.calculated_odometer_distance.toFixed(2) + ' km'
             : 'N/A';
 
-        var startPhotoHtml = data.start_odometer_photo
-            ? `<div style="margin-top: 6px;"><a href="${data.start_odometer_photo}" target="_blank"><img src="${data.start_odometer_photo}" style="max-width: 100%; max-height: 120px; border-radius: 6px; border: 1px solid #cbd5e1;" /></a></div>`
-            : '<span style="color: #94a3b8; font-size: 11px;">No photo</span>';
+        // Clickable thumbnail that opens the full-size photo in a dialog.
+        // Falls back to "No Photos" when the trip genuinely has no photo.
+        function photoHtml(photoUrl, label) {
+            if (!photoUrl) {
+                return '<span style="color: #94a3b8; font-size: 11px;">No Photos</span>';
+            }
+            return `
+                <div style="margin-top: 6px;">
+                    <a href="${photoUrl}" class="odometer-photo-link" title="View full-size photo" style="display: inline-block; text-decoration: none;">
+                        <img src="${photoUrl}" alt="${label} photo"
+                            style="max-width: 100%; max-height: 120px; border-radius: 6px; border: 1px solid #cbd5e1; cursor: zoom-in;" />
+                        <div style="font-size: 11px; color: #2563eb; margin-top: 3px; cursor: pointer;"><i class="fa fa-search-plus"></i> View Photo</div>
+                    </a>
+                </div>
+            `;
+        }
 
-        var endPhotoHtml = data.end_odometer_photo
-            ? `<div style="margin-top: 6px;"><a href="${data.end_odometer_photo}" target="_blank"><img src="${data.end_odometer_photo}" style="max-width: 100%; max-height: 120px; border-radius: 6px; border: 1px solid #cbd5e1;" /></a></div>`
-            : '<span style="color: #94a3b8; font-size: 11px;">No photo</span>';
+        var startPhotoHtml = photoHtml(data.start_odometer_photo, 'Start odometer');
+        var endPhotoHtml = photoHtml(data.end_odometer_photo, 'End odometer');
 
         var html = `
             <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -471,6 +472,21 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         `;
 
         container.html(html);
+
+        // Open the clicked odometer photo full-size in a dialog
+        container.off('click', '.odometer-photo-link').on('click', '.odometer-photo-link', function(e) {
+            e.preventDefault();
+            var src = $(this).find('img').attr('src');
+            if (!src) return;
+            var d = new frappe.ui.Dialog({
+                title: __('Odometer Photo'),
+                size: 'large'
+            });
+            d.$body.html(
+                '<img src="' + src + '" alt="Odometer photo" style="width: 100%; border-radius: 6px; border: 1px solid #e2e8f0;" />'
+            );
+            d.show();
+        });
     };
 
     page.render_telemetry = function(telemetry) {
@@ -559,6 +575,11 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
 
         events.forEach(function(ev) {
             var timeOnly = formatTimeOnly(ev.timestamp);
+            // End reason is displayed as a second line inside the Trip Ended
+            // event (server sends it as `reason`), not as a separate item.
+            var reasonHtml = ev.reason
+                ? `<div style="margin-top: 4px; font-size: 12px; color: #6b7280;"><strong style="color: #374151;">Reason:</strong> ${ev.reason}</div>`
+                : '';
             var itemHtml = `
                 <li class="timeline-event-item">
                     <div class="timeline-event-dot">
@@ -570,6 +591,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                             <span class="timeline-event-time" style="font-size: 12px; color: #6b7280; font-weight: 600;">${timeOnly}</span>
                         </div>
                         <div class="timeline-event-desc">${ev.details}</div>
+                        ${reasonHtml}
                     </div>
                 </li>
             `;

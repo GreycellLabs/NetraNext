@@ -510,16 +510,11 @@ def get_trip_telemetry_details(trip_id=None):
             "type": "TRIP_END",
             "title": "Trip Ended",
             "details": f"Ended at {resolved_end_location or 'Final Location'}",
+            # End reason is part of the Trip Ended event (not a separate
+            # timeline item). Rendered as a second line by the page JS.
+            "reason": human_end_reason if human_end_reason else None,
             "icon": "fa-flag-checkered"
         })
-        if human_end_reason:
-            timeline_events.append({
-                "timestamp": end_time_str + " ",
-                "type": "TRIP_END_REASON",
-                "title": "End Reason",
-                "details": human_end_reason,
-                "icon": "fa-info-circle"
-            })
 
     try:
         timeline_events.sort(key=lambda x: str(x["timestamp"]))

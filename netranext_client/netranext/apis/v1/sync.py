@@ -451,6 +451,41 @@ def store_face(face_data):
 
 
 @frappe.whitelist(allow_guest=True)
+def _save_odometer_photo(photo_data, journey_id, phase):
+    """
+    Persist a base64 data-URL odometer photo sent by the mobile app as a
+    Frappe File and return its file_url. Returns None for missing/invalid
+    input so the journey field simply stays empty.
+    """
+    if not photo_data or not isinstance(photo_data, str):
+        return None
+    try:
+        import base64
+        import re
+        from frappe.utils.file_manager import save_file
+
+        content = photo_data
+        match = re.match(r"^data:image/(png|jpeg|jpg);base64,(.*)$", photo_data, re.DOTALL)
+        ext = "png"
+        if match:
+            ext = "jpg" if match.group(1) in ("jpeg", "jpg") else "png"
+            content = match.group(2)
+
+        decoded = base64.b64decode(content)
+        fname = f"odometer_{phase}_{journey_id or frappe.generate_hash(6)}.{ext}"
+        file_doc = save_file(
+            fname=fname,
+            content=decoded,
+            dt=None,
+            dn=None,
+            is_private=0,
+        )
+        return file_doc.file_url if file_doc else None
+    except Exception as e:
+        tenant_bench_logger.warning(f"Could not save {phase} odometer photo: {e}", "JOURNEY_SYNC")
+        return None
+
+
 def store_journey(journey_data):
     """
     Store GPS journey from central server
@@ -532,6 +567,13 @@ def store_journey(journey_data):
             "scheduled_end_time": journey_data.get("scheduled_end_time"),
             "destination_address": journey_data.get("destination_address"),
             "trip_status_log": journey_data.get("trip_status_log"),
+            "start_odometer": journey_data.get("start_odometer"),
+            "end_odometer": journey_data.get("end_odometer"),
+            "start_notes": journey_data.get("start_notes"),
+            "end_notes": journey_data.get("end_notes"),
+            "calculated_odometer_distance": journey_data.get("calculated_odometer_distance"),
+            "start_odometer_photo": _save_odometer_photo(journey_data.get("start_odometer_photo"), journey_data.get("journey_id"), "start"),
+            "end_odometer_photo": _save_odometer_photo(journey_data.get("end_odometer_photo"), journey_data.get("journey_id"), "end"),
         }
 
         for field, value in optional_mappings.items():
