@@ -56,7 +56,7 @@ class NetraNextJourney(Document):
 
 	def on_update(self):
 		"""Check status change to generate expense claim"""
-		if self.has_value_changed('status') and self.status == 'Completed':
+		if self.status == 'Completed':
 			self.create_expense_claim()
 
 	def create_expense_claim(self):
@@ -66,10 +66,14 @@ class NetraNextJourney(Document):
 		expense_type = settings.expense_claim_type
 
 		if not expense_rate or not self.distance_km or not expense_type:
-			frappe.msgprint("Expense Claim not created: Distance is 0, Expense Rate is not configured, or Expense Claim Type is missing in NetraNext Settings.")
+			frappe.logger().info(f"Expense Claim skipped for {self.name}: distance={self.distance_km}, rate={expense_rate}, type={expense_type}")
 			return
 
-		expense_amount = self.distance_km * expense_rate
+		# Avoid duplicate expense claims for the same journey
+		if frappe.db.exists("Expense Claim", {"remark": ["like", f"%{self.name}%"]}):
+			return
+
+		expense_amount = float(self.distance_km) * float(expense_rate)
 
 		try:
 			employee = frappe.get_doc("Employee", self.employee)
@@ -79,24 +83,24 @@ class NetraNextJourney(Document):
 			expense_claim.company = employee.company
 			expense_claim.posting_date = frappe.utils.nowdate()
 			
-			if settings.expense_approver:
+			if getattr(settings, 'expense_approver', None):
 				expense_claim.expense_approver = settings.expense_approver
 			
-			if settings.payable_account:
+			if getattr(settings, 'payable_account', None):
 				expense_claim.payable_account = settings.payable_account
 			
 			expense_claim.append("expenses", {
 				"expense_type": expense_type,
 				"amount": expense_amount,
-				"description": f"Automated expense for Journey: {self.journey_name} ({self.distance_km} km at rate {expense_rate})"
+				"description": f"Automated expense for Journey: {getattr(self, 'journey_name', self.name)} ({self.distance_km} km at rate {expense_rate})"
 			})
 			
 			expense_claim.remark = f"Generated automatically for NetraNext Journey {self.name}"
 			
 			# Save as Draft (docstatus = 0 by default when inserted)
 			expense_claim.insert(ignore_permissions=True)
+			frappe.db.commit()
 			
-			frappe.msgprint(f"Draft Expense Claim {expense_claim.name} created successfully for {expense_amount}.")
+			frappe.logger().info(f"Draft Expense Claim {expense_claim.name} created successfully for {expense_amount}.")
 		except Exception as e:
 			frappe.log_error(frappe.get_traceback(), f"Failed to create Expense Claim for Journey {self.name}")
-			frappe.msgprint(f"Failed to create Expense Claim: {str(e)}")
