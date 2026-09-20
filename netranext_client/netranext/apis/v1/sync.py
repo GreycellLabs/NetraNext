@@ -489,6 +489,7 @@ def _save_odometer_photo(photo_data, journey_id, phase):
         return None
 
 
+@frappe.whitelist(allow_guest=True)
 def store_journey(journey_data):
     """
     Store GPS journey from central server
