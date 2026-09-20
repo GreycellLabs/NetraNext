@@ -110,6 +110,9 @@ def get_employee_data(employee_id=None, user_id=None):
         employee_data["personal_email"] = getattr(employee_doc, 'personal_email', None)
         employee_data["company_email"] = getattr(employee_doc, 'company_email', None)
 
+        # Add custom_user_link for dynamic mobile dashboard link
+        employee_data["custom_user_link"] = getattr(employee_doc, 'custom_user_link', getattr(employee_doc, 'user_link', getattr(employee_doc, 'custom_personal_link', None)))
+
         tenant_bench_logger.info(f"Employee data retrieved: {employee_data['name']}", "EMPLOYEE_SYNC")
 
         return create_success_response(
