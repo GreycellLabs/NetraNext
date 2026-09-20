@@ -63,17 +63,20 @@ class NetraNextJourney(Document):
 		"""Create an Expense Claim using the inbuilt module"""
 		settings = frappe.get_single("NetraNext Settings")
 		expense_rate = settings.expense_rate or 0.0
-		expense_type = settings.expense_claim_type
+		expense_type = settings.expense_claim_type or frappe.db.get_value("Expense Claim Type", {"expense_type": ["like", "%Travel%"]}, "name") or frappe.db.get_value("Expense Claim Type", {}, "name")
 
-		if not expense_rate or not self.distance_km or not expense_type:
-			frappe.logger().info(f"Expense Claim skipped for {self.name}: distance={self.distance_km}, rate={expense_rate}, type={expense_type}")
+		# Calculate effective distance (either distance_km or calculated_odometer_distance)
+		dist = float(self.distance_km or getattr(self, "calculated_odometer_distance", 0.0) or 0.0)
+
+		if not expense_rate or not dist or not expense_type:
+			frappe.logger().info(f"Expense Claim skipped for {self.name}: dist={dist}, rate={expense_rate}, type={expense_type}")
 			return
 
 		# Avoid duplicate expense claims for the same journey
 		if frappe.db.exists("Expense Claim", {"remark": ["like", f"%{self.name}%"]}):
 			return
 
-		expense_amount = float(self.distance_km) * float(expense_rate)
+		expense_amount = dist * float(expense_rate)
 
 		try:
 			employee = frappe.get_doc("Employee", self.employee)
@@ -92,7 +95,7 @@ class NetraNextJourney(Document):
 			expense_claim.append("expenses", {
 				"expense_type": expense_type,
 				"amount": expense_amount,
-				"description": f"Automated expense for Journey: {getattr(self, 'journey_name', self.name)} ({self.distance_km} km at rate {expense_rate})"
+				"description": f"Automated expense for Journey: {getattr(self, 'journey_name', self.name)} ({dist} km at rate {expense_rate})"
 			})
 			
 			expense_claim.remark = f"Generated automatically for NetraNext Journey {self.name}"
