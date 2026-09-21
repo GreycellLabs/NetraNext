@@ -437,6 +437,10 @@ function render_dashboard(data) {
             <span class="shortcut-label">Schedule Trip</span>
             <span class="shortcut-arrow">↗</span>
         </div>
+        <div class="shortcut-item" onclick="frappe.set_route('List', 'NetraNext User Mapping')">
+            <span class="shortcut-label">User Mappings</span>
+            <span class="shortcut-arrow">↗</span>
+        </div>
     `;
 
     document.getElementById("onboard-flow-content").innerHTML /* nosemgrep */ = onboardHTML;

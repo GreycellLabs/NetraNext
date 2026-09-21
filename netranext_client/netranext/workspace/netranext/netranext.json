@@ -148,6 +148,16 @@
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "User Mappings",
+   "link_count": 0,
+   "link_to": "NetraNext User Mapping",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
   }
  ],
  "modified": "2026-07-20 10:25:00.000000",
