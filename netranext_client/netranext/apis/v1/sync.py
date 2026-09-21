@@ -111,7 +111,23 @@ def get_employee_data(employee_id=None, user_id=None):
         employee_data["company_email"] = getattr(employee_doc, 'company_email', None)
 
         # Add custom_user_link for dynamic mobile dashboard link
-        employee_data["custom_user_link"] = getattr(employee_doc, 'custom_user_link', getattr(employee_doc, 'user_link', getattr(employee_doc, 'custom_personal_link', None)))
+        user_link = getattr(employee_doc, 'custom_user_link', getattr(employee_doc, 'user_link', getattr(employee_doc, 'custom_personal_link', None)))
+        if not user_link and frappe.db.exists("DocType", "NetraNext User Mapping"):
+            mapping = frappe.db.get_value(
+                "NetraNext User Mapping",
+                filters={"user": employee_data.get("user_id"), "status": "Active"},
+                fieldname=["custom_user_link"],
+                as_dict=True
+            ) or frappe.db.get_value(
+                "NetraNext User Mapping",
+                filters={"employee": employee_data["name"], "status": "Active"},
+                fieldname=["custom_user_link"],
+                as_dict=True
+            )
+            if mapping and mapping.get("custom_user_link"):
+                user_link = mapping.get("custom_user_link")
+
+        employee_data["custom_user_link"] = user_link
 
         tenant_bench_logger.info(f"Employee data retrieved: {employee_data['name']}", "EMPLOYEE_SYNC")
 
