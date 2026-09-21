@@ -1482,15 +1482,22 @@ def get_shift_reminders():
 
         now = frappe.utils.now_datetime()
         employees = frappe.get_all("Employee", filters={"status": "Active"}, fields=["name", "employee_name", "user_id"])
-        
+
         system_tz = pytz.timezone(get_system_timezone() or "UTC")
-        
-        def to_utc(dt):
+
+        def to_utc_naive(dt):
+            """Convert a naive system-local datetime to a NAIVE UTC datetime.
+
+            Frappe stores Datetime columns as naive UTC in the database, so
+            filter values must be naive UTC too. An aware datetime serializes
+            with a '+00:00' suffix that databases cannot reliably compare
+            against DATETIME columns.
+            """
             if not dt:
                 return None
             if dt.tzinfo is not None:
-                return dt.astimezone(pytz.utc)
-            return system_tz.localize(dt).astimezone(pytz.utc)
+                return dt.astimezone(pytz.utc).replace(tzinfo=None)
+            return system_tz.localize(dt).astimezone(pytz.utc).replace(tzinfo=None)
 
         def to_naive_local(dt):
             if not dt:
@@ -1501,88 +1508,109 @@ def get_shift_reminders():
 
         now_naive = to_naive_local(now)
         reminders = []
-        
-        debug_logs.append(f"Current local time (naive): {now_naive.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        debug_logs.append(f"Current local time (naive): {now_naive.strftime('%Y-%m-%d %H:%M:%S')} (system tz: {system_tz}, UTC: {to_utc_naive(now_naive).strftime('%Y-%m-%d %H:%M:%S')})")
         debug_logs.append(f"Active employees count: {len(employees)}")
-        
+
         for emp in employees:
             if not emp.user_id:
                 debug_logs.append(f"Employee {emp.employee_name} ({emp.name}) skipped: No User ID linked.")
                 continue
-                
-            shift_details = get_employee_shift(emp.name, now, consider_default_shift=True)
-            if not shift_details or not shift_details.get("start_datetime"):
+
+            # HRMS get_employee_shift() only returns a shift when the timestamp is
+            # INSIDE the shift's [actual_start, actual_end] range, so a single
+            # lookup at `now` misses shifts that are about to start (the -15..0
+            # check-in window) or just ended (the 0..+30 check-out window).
+            # Probe slightly ahead/behind to catch those boundary shifts.
+            probes = [
+                (now, True),                           # current shift (or default shift)
+                (now + timedelta(minutes=16), False),  # shift starting within the next 15 min
+                (now - timedelta(minutes=31), False),  # shift that ended within the last 30 min
+            ]
+
+            candidates = {}
+            for probe_ts, consider_default in probes:
+                shift_details = get_employee_shift(emp.name, probe_ts, consider_default_shift=consider_default)
+                if not shift_details or not shift_details.get("start_datetime"):
+                    continue
+                shift_name = shift_details.get("shift_type").get("name") if isinstance(shift_details.get("shift_type"), dict) else shift_details.get("shift_type")
+                candidates[(shift_name, shift_details.get("start_datetime"))] = shift_details
+
+            if not candidates:
                 debug_logs.append(f"Employee {emp.employee_name} ({emp.name}) skipped: No shift found for today.")
                 continue
-                
-            start_dt = to_naive_local(shift_details.get("start_datetime"))
-            end_dt = to_naive_local(shift_details.get("end_datetime"))
-            
-            debug_logs.append(
-                f"Employee {emp.employee_name} ({emp.name}) has shift '{shift_details.get('shift_type')}' today: "
-                f"Start={start_dt.strftime('%H:%M:%S')}, End={end_dt.strftime('%H:%M:%S')}"
-            )
-            
-            # Check-in reminder window (from 15 minutes before shift start to 30 minutes after)
-            time_since_start = (now_naive - start_dt).total_seconds() / 60
-            debug_logs.append(f"  Check-in: time_since_start = {time_since_start:.2f} minutes.")
-            if -15 <= time_since_start <= 30:
-                # Check if check-in log exists for today within the start threshold (convert to UTC for database query)
-                checkin_threshold_utc = to_utc(start_dt - timedelta(hours=4))
-                checkin_exists = frappe.db.exists("Employee Checkin", {
-                    "employee": emp.name,
-                    "log_type": "IN",
-                    "time": [">=", checkin_threshold_utc]
-                })
-                if not checkin_exists:
-                    reminders.append({
-                        "user_id": emp.user_id,
-                        "employee_name": emp.employee_name,
-                        "type": "check_in",
-                        "shift_time": start_dt.strftime('%I:%M %p')
-                    })
-                    debug_logs.append("  Check-in: Added to reminder list.")
-                else:
-                    debug_logs.append("  Check-in: Skipped because check-in log already exists.")
-            else:
-                debug_logs.append(f"  Check-in: Skipped because time_since_start ({time_since_start:.2f} mins) is outside -15..30 window.")
-                    
-            # Check-out reminder window (from 15 minutes before shift end to 30 minutes after)
-            time_since_end = (now_naive - end_dt).total_seconds() / 60
-            debug_logs.append(f"  Check-out: time_since_end = {time_since_end:.2f} minutes.")
-            if -15 <= time_since_end <= 30:
-                # 1. Verify employee actually checked in for this shift
-                checkin_threshold_utc = to_utc(start_dt - timedelta(hours=4))
-                checkin_exists = frappe.db.exists("Employee Checkin", {
-                    "employee": emp.name,
-                    "log_type": "IN",
-                    "time": [">=", checkin_threshold_utc]
-                })
 
-                if not checkin_exists:
-                    debug_logs.append("  Check-out: Skipped because employee never checked in for this shift.")
-                    continue
+            for shift_details in candidates.values():
+                shift_name = shift_details.get("shift_type").get("name") if isinstance(shift_details.get("shift_type"), dict) else shift_details.get("shift_type")
+                start_dt = to_naive_local(shift_details.get("start_datetime"))
+                end_dt = to_naive_local(shift_details.get("end_datetime"))
 
-                # 2. Check if check-out log exists for today within the end threshold
-                checkout_threshold_utc = to_utc(end_dt - timedelta(hours=4))
-                checkout_exists = frappe.db.exists("Employee Checkin", {
-                    "employee": emp.name,
-                    "log_type": "OUT",
-                    "time": [">=", checkout_threshold_utc]
-                })
-                if not checkout_exists:
-                    reminders.append({
-                        "user_id": emp.user_id,
-                        "employee_name": emp.employee_name,
-                        "type": "check_out",
-                        "shift_time": end_dt.strftime('%I:%M %p')
+                debug_logs.append(
+                    f"Employee {emp.employee_name} ({emp.name}) has shift '{shift_name}' today: "
+                    f"Start={start_dt.strftime('%H:%M:%S')}, End={end_dt.strftime('%H:%M:%S')}"
+                )
+
+                # Check-in reminder window (from 15 minutes before shift start to 30 minutes after)
+                time_since_start = (now_naive - start_dt).total_seconds() / 60
+                debug_logs.append(f"  Check-in: time_since_start = {time_since_start:.2f} minutes.")
+                if -15 <= time_since_start <= 30:
+                    # Check if check-in log exists within the past 4 hours from shift start
+                    # (converted to naive UTC — the format Employee Checkin time is stored in)
+                    checkin_threshold_utc = to_utc_naive(start_dt - timedelta(hours=4))
+                    checkin_exists = frappe.db.exists("Employee Checkin", {
+                        "employee": emp.name,
+                        "log_type": "IN",
+                        "time": [">=", checkin_threshold_utc]
                     })
-                    debug_logs.append("  Check-out: Added to reminder list.")
+                    if not checkin_exists:
+                        reminders.append({
+                            "user_id": emp.user_id,
+                            "employee_name": emp.employee_name,
+                            "type": "check_in",
+                            "shift_time": start_dt.strftime('%I:%M %p')
+                        })
+                        debug_logs.append("  Check-in: Added to reminder list.")
+                    else:
+                        debug_logs.append("  Check-in: Skipped because check-in log already exists.")
                 else:
-                    debug_logs.append("  Check-out: Skipped because check-out log already exists.")
-            else:
-                debug_logs.append(f"  Check-out: Skipped because time_since_end ({time_since_end:.2f} mins) is outside -15..30 window.")
-                    
+                    debug_logs.append(f"  Check-in: Skipped because time_since_start ({time_since_start:.2f} mins) is outside -15..30 window.")
+
+                # Check-out reminder window (from 15 minutes before shift end to 30 minutes after)
+                time_since_end = (now_naive - end_dt).total_seconds() / 60
+                debug_logs.append(f"  Check-out: time_since_end = {time_since_end:.2f} minutes.")
+                if -15 <= time_since_end <= 30:
+                    # 1. Verify employee actually checked in for this shift
+                    checkin_threshold_utc = to_utc_naive(start_dt - timedelta(hours=4))
+                    checkin_exists = frappe.db.exists("Employee Checkin", {
+                        "employee": emp.name,
+                        "log_type": "IN",
+                        "time": [">=", checkin_threshold_utc]
+                    })
+
+                    if not checkin_exists:
+                        debug_logs.append("  Check-out: Skipped because employee never checked in for this shift.")
+                        continue
+
+                    # 2. Check if check-out log exists within the past 4 hours from shift end
+                    checkout_threshold_utc = to_utc_naive(end_dt - timedelta(hours=4))
+                    checkout_exists = frappe.db.exists("Employee Checkin", {
+                        "employee": emp.name,
+                        "log_type": "OUT",
+                        "time": [">=", checkout_threshold_utc]
+                    })
+                    if not checkout_exists:
+                        reminders.append({
+                            "user_id": emp.user_id,
+                            "employee_name": emp.employee_name,
+                            "type": "check_out",
+                            "shift_time": end_dt.strftime('%I:%M %p')
+                        })
+                        debug_logs.append("  Check-out: Added to reminder list.")
+                    else:
+                        debug_logs.append("  Check-out: Skipped because check-out log already exists.")
+                else:
+                    debug_logs.append(f"  Check-out: Skipped because time_since_end ({time_since_end:.2f} mins) is outside -15..30 window.")
+
         # Log all debug statements
         frappe.log_error(title="Shift Reminders Client Debug", message="\n".join(debug_logs))
         return create_success_response("Shift reminders retrieved successfully", reminders)
