@@ -604,30 +604,35 @@ def store_journey(journey_data):
         trip_id = journey_data.get("trip_id")
 
         # Check if journey already exists from the same Flutter session (with cache lock to prevent concurrent double-inserts)
-        # Match on employee as well: different users may start the same scheduled trip
-        # under the same flutter_journey_id, and each must keep their own journey record
-        # so one user's connectivity does not affect another's tracking data/online status.
-        journey_filters = {
-            "flutter_journey_id": flutter_journey_id,
-            "employee": journey_data["employee_id"],
-        }
         existing_journey = None
         if flutter_journey_id:
             lock_key = f"lock_journey_{flutter_journey_id}_{journey_data['employee_id']}"
             if frappe.cache().get_value(lock_key):
-                # A request for this journey is already running. Wait for it to commit.
                 import time
                 for _ in range(10):
                     time.sleep(0.3)
-                    existing_journey = frappe.db.get_value("NetraNext Journey", journey_filters, "name")
+                    existing_journey = frappe.db.get_value("NetraNext Journey", {
+                        "flutter_journey_id": flutter_journey_id,
+                        "employee": journey_data["employee_id"],
+                    }, "name")
                     if existing_journey:
                         break
             else:
                 frappe.cache().set_value(lock_key, "1", expires_in_sec=15)
 
             if not existing_journey:
-                existing_journey = frappe.db.get_value("NetraNext Journey", journey_filters, "name")
-            
+                existing_journey = frappe.db.get_value("NetraNext Journey", {
+                    "flutter_journey_id": flutter_journey_id,
+                    "employee": journey_data["employee_id"],
+                }, "name")
+
+        # Fallback deduplication: If no match by flutter_journey_id, check if an "In Progress" journey already exists for this employee today
+        if not existing_journey and doc_data.get("status") == "In Progress":
+            existing_journey = frappe.db.get_value("NetraNext Journey", {
+                "employee": journey_data["employee_id"],
+                "status": "In Progress"
+            }, "name")
+
         if existing_journey:
             # Update the existing journey (e.g., transition from In Progress -> Completed)
             journey_doc = frappe.get_doc("NetraNext Journey", existing_journey)
