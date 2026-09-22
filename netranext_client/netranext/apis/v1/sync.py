@@ -626,11 +626,23 @@ def store_journey(journey_data):
                     "employee": journey_data["employee_id"],
                 }, "name")
 
-        # Fallback deduplication: If no match by flutter_journey_id, check if an "In Progress" journey already exists for this employee today
-        if not existing_journey and doc_data.get("status") == "In Progress":
+        # Fallback deduplication 1: Check if trip_id matches an existing journey name
+        if not existing_journey and trip_id:
+            if frappe.db.exists("NetraNext Journey", trip_id):
+                existing_journey = trip_id
+
+        # Fallback deduplication 2: Check if an "In Progress" journey already exists for this employee
+        if not existing_journey:
             existing_journey = frappe.db.get_value("NetraNext Journey", {
                 "employee": journey_data["employee_id"],
                 "status": "In Progress"
+            }, "name")
+
+        # Fallback deduplication 3: Check by exact start_time for this employee
+        if not existing_journey and doc_data.get("start_time"):
+            existing_journey = frappe.db.get_value("NetraNext Journey", {
+                "employee": journey_data["employee_id"],
+                "start_time": doc_data["start_time"]
             }, "name")
 
         if existing_journey:
