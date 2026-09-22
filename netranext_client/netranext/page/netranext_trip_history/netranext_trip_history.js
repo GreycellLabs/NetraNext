@@ -303,63 +303,15 @@
         var seenTripIds = new Set();
         var deduplicatedTrips = [];
 
-        function parse_time(ts) {
-            if (!ts) return null;
-            var str = ts.toString().replace('T', ' ').replace('Z', '').trim();
-            var d = new Date(str);
-            return isNaN(d.getTime()) ? null : d.getTime();
-        }
-
-        function completeness_score(trip) {
-            var score = 0;
-            if (trip.status === 'Completed') score += 4;
-            if (trip.end_time) score += 2;
-            if ((parseFloat(trip.distance_km) || 0) > 0) score += 1;
-            if (trip.snapped_coordinates || (trip.raw_coordinates && trip.raw_coordinates.length > 0)) score += 2;
-            return score;
-        }
-
         allTrips.forEach(function(trip) {
             var tripId = trip.name || trip.trip_id;
 
-            // 1. Primary key check
+            // Deduplicate strictly by unique database record ID
             if (tripId) {
                 if (seenTripIds.has(tripId)) {
                     return;
                 }
                 seenTripIds.add(tripId);
-            }
-
-            var emp = trip.employee || trip.user_id || '';
-            var startTs = parse_time(trip.start_time);
-            var dist = parseFloat(trip.distance_km) || 0;
-
-            // 2. Check if a fuzzy match (same employee, start time within 3 minutes) already exists
-            var existingIndex = -1;
-            for (var i = 0; i < deduplicatedTrips.length; i++) {
-                var existing = deduplicatedTrips[i];
-                var existingEmp = existing.employee || existing.user_id || '';
-
-                if (emp !== existingEmp) continue;
-
-                var existingStartTs = parse_time(existing.start_time);
-                var isNearStart = (startTs && existingStartTs)
-                    ? Math.abs(startTs - existingStartTs) <= 3 * 60 * 1000 // within 3 minutes
-                    : (trip.start_time === existing.start_time);
-
-                // If start times match closely (or both are 0-dist duplicate starts)
-                if (isNearStart) {
-                    existingIndex = i;
-                    break;
-                }
-            }
-
-            if (existingIndex >= 0) {
-                // Keep the record with higher completeness score
-                if (completeness_score(trip) > completeness_score(deduplicatedTrips[existingIndex])) {
-                    deduplicatedTrips[existingIndex] = trip;
-                }
-                return;
             }
 
             deduplicatedTrips.push(trip);
