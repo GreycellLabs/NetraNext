@@ -552,7 +552,10 @@ def store_journey(journey_data):
         if not journey_date:
             journey_date = frappe.utils.today()
 
-        # Build the doc — handle both old and new field schemas gracefully
+        # Build the base doc — handle both old and new field schemas gracefully.
+        # Optional fields (incl. the expensive odometer photo downloads) are
+        # attached AFTER the duplicate lookup below so that concurrent syncs of
+        # the same journey resolve to a single record instead of racing.
         doc_data = {
             "doctype": "NetraNext Journey",
             "employee": journey_data["employee_id"],
@@ -564,7 +567,96 @@ def store_journey(journey_data):
             "status": journey_data.get("status", "Completed"),
         }
 
-        # Optional fields — set only if the field exists in the DocType
+        flutter_journey_id = journey_data.get("journey_id")
+        trip_id = journey_data.get("trip_id")
+
+        def find_existing_journey():
+            """Idempotency lookups: return the journey this sync should update, if any."""
+            # 1. Same Flutter session journey id
+            if flutter_journey_id:
+                found = frappe.db.get_value("NetraNext Journey", {
+                    "flutter_journey_id": flutter_journey_id,
+                    "employee": journey_data["employee_id"],
+                }, "name")
+                if found:
+                    return found
+
+            # 2. Journey name matches the trip_id
+            if trip_id and frappe.db.exists("NetraNext Journey", trip_id):
+                return trip_id
+
+            # 3. Live "In Progress" journey for this employee — only when this
+            # sync is itself an "In Progress" heartbeat or comes from a legacy
+            # client without a flutter journey id. A Completed journey with its
+            # own new flutter id must create a fresh record instead of merging
+            # into an unrelated old trip.
+            if doc_data.get("status") == "In Progress" or not flutter_journey_id:
+                found = frappe.db.get_value("NetraNext Journey", {
+                    "employee": journey_data["employee_id"],
+                    "status": "In Progress"
+                }, "name")
+                if found:
+                    return found
+
+            # 4. Exact same start_time for this employee. Normalize the value
+            # (ISO "T"/"Z" separators, microseconds) before comparing against
+            # the DATETIME column so replays with a different string encoding
+            # still match.
+            if start_time_raw:
+                from frappe.utils import get_datetime
+                start_candidates = []
+                try:
+                    start_candidates.append(get_datetime(start_time_raw))
+                except Exception:
+                    pass
+                start_candidates.append(start_time_raw)
+                for start_value in start_candidates:
+                    try:
+                        found = frappe.db.get_value("NetraNext Journey", {
+                            "employee": journey_data["employee_id"],
+                            "start_time": start_value
+                        }, "name")
+                    except Exception:
+                        found = None
+                    if found:
+                        return found
+
+            return None
+
+        existing_journey = find_existing_journey()
+
+        lock_acquired = False
+        if not existing_journey:
+            # Concurrent-sync guard: another request carrying the same journey
+            # may be inserting it right now — its row stays invisible to this
+            # transaction until that request commits. Wait for the lock holder
+            # to finish instead of inserting a duplicate row.
+            lock_key = f"lock_journey_{flutter_journey_id or trip_id or 'new'}_{journey_data['employee_id']}"
+            if frappe.cache().get_value(lock_key):
+                import time
+                # Up to ~30s: covers the 15s odometer photo download timeout
+                # the lock holder may be paying before its insert commits.
+                for _ in range(60):
+                    time.sleep(0.5)
+                    existing_journey = find_existing_journey()
+                    if existing_journey:
+                        break
+                    if not frappe.cache().get_value(lock_key):
+                        # Holder finished — give its commit a short grace
+                        # period to become visible, then look one last time.
+                        for _ in range(6):
+                            time.sleep(0.5)
+                            existing_journey = find_existing_journey()
+                            if existing_journey:
+                                break
+                        break
+            else:
+                frappe.cache().set_value(lock_key, "1", expires_in_sec=60)
+                lock_acquired = True
+
+        # Optional fields — set only if the field exists in the DocType.
+        # Photo downloads happen here, after the dedup checks above, so both
+        # the update and the insert path attach them exactly once.
         journey_meta = frappe.get_meta("NetraNext Journey")
         field_names = [f.fieldname for f in journey_meta.fields]
 
@@ -600,50 +692,10 @@ def store_journey(journey_data):
             if field in field_names and value is not None:
                 doc_data[field] = value
 
-        flutter_journey_id = journey_data.get("journey_id")
-        trip_id = journey_data.get("trip_id")
-
-        # Check if journey already exists from the same Flutter session (with cache lock to prevent concurrent double-inserts)
-        existing_journey = None
-        if flutter_journey_id:
-            lock_key = f"lock_journey_{flutter_journey_id}_{journey_data['employee_id']}"
-            if frappe.cache().get_value(lock_key):
-                import time
-                for _ in range(10):
-                    time.sleep(0.3)
-                    existing_journey = frappe.db.get_value("NetraNext Journey", {
-                        "flutter_journey_id": flutter_journey_id,
-                        "employee": journey_data["employee_id"],
-                    }, "name")
-                    if existing_journey:
-                        break
-            else:
-                frappe.cache().set_value(lock_key, "1", expires_in_sec=15)
-
-            if not existing_journey:
-                existing_journey = frappe.db.get_value("NetraNext Journey", {
-                    "flutter_journey_id": flutter_journey_id,
-                    "employee": journey_data["employee_id"],
-                }, "name")
-
-        # Fallback deduplication 1: Check if trip_id matches an existing journey name
-        if not existing_journey and trip_id:
-            if frappe.db.exists("NetraNext Journey", trip_id):
-                existing_journey = trip_id
-
-        # Fallback deduplication 2: Check if an "In Progress" journey already exists for this employee
-        if not existing_journey:
-            existing_journey = frappe.db.get_value("NetraNext Journey", {
-                "employee": journey_data["employee_id"],
-                "status": "In Progress"
-            }, "name")
-
-        # Fallback deduplication 3: Check by exact start_time for this employee
-        if not existing_journey and doc_data.get("start_time"):
-            existing_journey = frappe.db.get_value("NetraNext Journey", {
-                "employee": journey_data["employee_id"],
-                "start_time": doc_data["start_time"]
-            }, "name")
+        # Final re-check right before writing: the photo downloads above can
+        # take many seconds — a concurrent sync may have committed this journey
+        # in the meantime.
+        existing_journey = find_existing_journey()
 
         if existing_journey:
             # Update the existing journey (e.g., transition from In Progress -> Completed)
@@ -657,6 +709,11 @@ def store_journey(journey_data):
             # Create a new Journey for the tracked route
             journey_doc = frappe.get_doc(doc_data)
             journey_doc.insert(ignore_permissions=True)
+            # Commit immediately so concurrent duplicate syncs waiting on the
+            # lock can see this row instead of inserting their own copy.
+            frappe.db.commit()
+            if lock_acquired:
+                frappe.cache().delete_value(lock_key)
             action = "stored"
 
         # If this journey is "In Progress", ensure no other journeys for this employee are "In Progress"
@@ -666,6 +723,28 @@ def store_journey(journey_data):
                 SET status = 'Completed', end_time = %s
                 WHERE employee = %s AND status = 'In Progress' AND name != %s
             """, (frappe.utils.now_datetime(), doc_data["employee"], journey_doc.name))
+
+        # Stray cleanup: past concurrent-sync races may have left duplicate
+        # rows sharing this Flutter journey id. Delete any duplicate of the
+        # record just stored/updated so the trip shows up once in history.
+        if flutter_journey_id:
+            stray_duplicates = frappe.get_all("NetraNext Journey", filters={
+                "employee": journey_data["employee_id"],
+                "flutter_journey_id": flutter_journey_id,
+                "name": ["!=", journey_doc.name],
+            }, pluck="name", ignore_permissions=True)
+            for stray_name in stray_duplicates:
+                try:
+                    frappe.delete_doc("NetraNext Journey", stray_name, ignore_permissions=True)
+                    tenant_bench_logger.warning(
+                        f"Deleted duplicate journey {stray_name} for flutter_journey_id {flutter_journey_id}",
+                        "JOURNEY_SYNC"
+                    )
+                except Exception as del_err:
+                    tenant_bench_logger.warning(
+                        f"Could not delete duplicate journey {stray_name}: {del_err}",
+                        "JOURNEY_SYNC"
+                    )
         
         tenant_bench_logger.info(f"Checking Scheduled Trip. Received trip_id: {trip_id}", "JOURNEY_SYNC")
         
