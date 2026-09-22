@@ -488,10 +488,9 @@
             var mapEl = pageWrapper.find('#trip-history-map')[0];
             mapViewData.map = L.map(mapEl).setView([12.9716, 77.5946], 12);
 
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                attribution: '© OpenStreetMap contributors © CARTO',
-                maxZoom: 19,
-                subdomains: 'abcd'
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
             }).addTo(mapViewData.map);
         } catch (error) {
             console.error("Error creating map:", error);
