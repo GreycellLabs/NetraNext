@@ -54,6 +54,16 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Expense Claim List",
+   "link_count": 0,
+   "link_to": "netranext-expense-claims",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Scheduled Trips",
    "link_count": 0,
    "link_to": "Scheduled Trip",
@@ -201,6 +211,14 @@
    "icon": "time",
    "label": "Trip History",
    "link_to": "netranext-trip-history",
+   "type": "Page"
+  },
+  {
+   "color": "Purple",
+   "doc_view": "",
+   "icon": "money",
+   "label": "Expense Claim List",
+   "link_to": "netranext-expense-claims",
    "type": "Page"
   },
   {

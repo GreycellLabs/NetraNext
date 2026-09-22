@@ -1,0 +1,31 @@
+{
+ "content": null,
+ "creation": "2026-09-22 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-09-22 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "NetraNext",
+ "name": "netranext-expense-claims",
+ "owner": "Administrator",
+ "page_name": "netranext-expense-claims",
+ "title": "Expense Claim List",
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "HR Manager"
+  },
+  {
+   "role": "HR User"
+  },
+  {
+   "role": "All"
+  }
+ ],
+ "script": "netranext_expense_claims.js",
+ "standard": "Yes",
+ "system_page": 1
+}

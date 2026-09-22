@@ -51,6 +51,16 @@ def execute():
             "system_page": 1,
             "title": "Trip Details",
             "icon": "fa-info-circle"
+        },
+        {
+            "doctype": "Page",
+            "name": "netranext-expense-claims",
+            "page_name": "netranext-expense-claims",
+            "module": "NetraNext",
+            "standard": "Yes",
+            "system_page": 1,
+            "title": "Expense Claim List",
+            "icon": "fa-money"
         }
     ]
 

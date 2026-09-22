@@ -104,6 +104,12 @@ pages_dict = {
         "route": "/app/netranext-trip-details",
         "icon": "fa-info-circle",
         "roles": ["System Manager", "HR Manager", "HR User", "All"]
+    },
+    "netranext-expense-claims": {
+        "title": "Expense Claim List",
+        "route": "/app/netranext-expense-claims",
+        "icon": "fa-money",
+        "roles": ["System Manager", "HR Manager", "HR User", "All"]
     }
 }
 
@@ -401,6 +407,9 @@ custom_fields = {
 
 
 after_migrate = [
+    # NOTE: a top-level `custom_fields` dict is NOT processed by this Frappe
+    # version — custom fields must be created via create_custom_fields().
+    "netranext_client.netranext.patches.create_expense_claim_fields.execute",
     "netranext_client.netranext.patches.register_pages.execute"
 ]
 
