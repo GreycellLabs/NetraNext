@@ -33,19 +33,32 @@
             var formattedStr = timeStr.toString().trim();
             
             if (formattedStr.includes('-') && (formattedStr.includes(':') || formattedStr.includes('T'))) {
-                if (!formattedStr.includes('T')) {
-                    formattedStr = formattedStr.replace(' ', 'T');
+                // Database stores time in local system timezone (naive format YYYY-MM-DD HH:mm:ss)
+                if (formattedStr.includes('T')) {
+                    formattedStr = formattedStr.replace('T', ' ');
                 }
-                if (!formattedStr.endsWith('Z') && !formattedStr.includes('+')) {
-                    formattedStr += 'Z';
-                }
-                date = new Date(formattedStr);
+                var parts = formattedStr.split(' ');
+                var dateParts = parts[0].split('-');
+                var timeParts = parts[1].split(':');
+                date = new Date(
+                    parseInt(dateParts[0]),
+                    parseInt(dateParts[1]) - 1,
+                    parseInt(dateParts[2]),
+                    parseInt(timeParts[0]),
+                    parseInt(timeParts[1]),
+                    parseInt(timeParts[2] || 0)
+                );
             } else {
                 var today = new Date();
-                var yyyy = today.getFullYear();
-                var mm = String(today.getMonth() + 1).padStart(2, '0');
-                var dd = String(today.getDate()).padStart(2, '0');
-                date = new Date(yyyy + '-' + mm + '-' + dd + 'T' + formattedStr + 'Z');
+                var timeParts = formattedStr.split(':');
+                date = new Date(
+                    today.getFullYear(),
+                    today.getMonth(),
+                    today.getDate(),
+                    parseInt(timeParts[0]),
+                    parseInt(timeParts[1]),
+                    parseInt(timeParts[2] || 0)
+                );
             }
 
             if (isNaN(date.getTime())) {
