@@ -134,6 +134,7 @@ class NetraNextJourney(Document):
 			expense_claim.employee = self.employee
 			expense_claim.company = employee.company
 			expense_claim.posting_date = posting_date
+			expense_claim.exchange_rate = 1.0
 
 			if getattr(settings, 'expense_approver', None):
 				expense_claim.expense_approver = settings.expense_approver

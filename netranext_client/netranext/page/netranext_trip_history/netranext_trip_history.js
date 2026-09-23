@@ -106,35 +106,19 @@
     function formatDate(dateString) {
         if (!dateString) return '-';
         try {
-            var formattedStr = dateString.toString().replace(/[\r\n]+/g, ' ').trim();
-            if (formattedStr.includes('-') && (formattedStr.includes(':') || formattedStr.includes('T'))) {
-                if (!formattedStr.includes('T')) {
-                    formattedStr = formattedStr.replace(' ', 'T');
-                }
-                if (!formattedStr.endsWith('Z') && !formattedStr.includes('+')) {
-                    formattedStr += 'Z';
-                }
-                var date = new Date(formattedStr);
-                if (!isNaN(date.getTime())) {
-                    var yyyy = date.getFullYear();
-                    var mm = String(date.getMonth() + 1).padStart(2, '0');
-                    var dd = String(date.getDate()).padStart(2, '0');
-                    return yyyy + '-' + mm + '-' + dd;
-                }
+            var dateStr = dateString.toString().replace(/[\r\n]+/g, ' ').trim();
+            if (dateStr.includes('T')) {
+                return dateStr.split('T')[0];
             }
+            var firstSpace = dateStr.indexOf(' ');
+            if (firstSpace > 0) {
+                return dateStr.substring(0, firstSpace);
+            }
+            return dateStr;
         } catch (e) {
             console.error("Error formatting date:", e);
+            return String(dateString);
         }
-        
-        var dateStr = dateString.toString().replace(/[\r\n]+/g, ' ').trim();
-        if (dateStr.includes('T')) {
-            return dateStr.split('T')[0];
-        }
-        var firstSpace = dateStr.indexOf(' ');
-        if (firstSpace > 0) {
-            return dateStr.substring(0, firstSpace);
-        }
-        return dateStr;
     }
 
     function load_leaflet_library(callback) {
