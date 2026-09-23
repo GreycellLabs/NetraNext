@@ -110,24 +110,36 @@ def get_employee_data(employee_id=None, user_id=None):
         employee_data["personal_email"] = getattr(employee_doc, 'personal_email', None)
         employee_data["company_email"] = getattr(employee_doc, 'company_email', None)
 
-        # Add custom_user_link for dynamic mobile dashboard link
-        user_link = getattr(employee_doc, 'custom_user_link', getattr(employee_doc, 'user_link', getattr(employee_doc, 'custom_personal_link', None)))
-        if not user_link and frappe.db.exists("DocType", "NetraNext User Mapping"):
-            mapping = frappe.db.get_value(
-                "NetraNext User Mapping",
-                filters={"user": employee_data.get("user_id"), "status": "Active"},
-                fieldname=["custom_user_link"],
-                as_dict=True
-            ) or frappe.db.get_value(
-                "NetraNext User Mapping",
-                filters={"employee": employee_data["name"], "status": "Active"},
-                fieldname=["custom_user_link"],
-                as_dict=True
-            )
-            if mapping and mapping.get("custom_user_link"):
-                user_link = mapping.get("custom_user_link")
+        # Add dynamic user links from NetraNext User Mapping DocType (Title + URL)
+        user_links_list = []
+        if frappe.db.exists("DocType", "NetraNext User Mapping"):
+            user_id = employee_data.get("user_id") or getattr(employee_doc, 'user_id', None)
+            emp_name = employee_data.get("name") or getattr(employee_doc, 'name', None)
 
-        employee_data["custom_user_link"] = user_link
+            mappings = []
+            if user_id:
+                mappings = frappe.get_all(
+                    "NetraNext User Mapping",
+                    filters={"status": "Active", "user": user_id},
+                    fields=["custom_user_link", "title"]
+                )
+            if not mappings and emp_name:
+                mappings = frappe.get_all(
+                    "NetraNext User Mapping",
+                    filters={"status": "Active", "employee": emp_name},
+                    fields=["custom_user_link", "title"]
+                )
+
+            for m in mappings:
+                link_url = (m.get("custom_user_link") or "").strip()
+                display_title = (m.get("title") or "").strip()
+                if link_url:
+                    if display_title:
+                        user_links_list.append(f"{display_title} | {link_url}")
+                    else:
+                        user_links_list.append(link_url)
+
+        employee_data["custom_user_link"] = "\n".join(user_links_list) if user_links_list else None
 
         tenant_bench_logger.info(f"Employee data retrieved: {employee_data['name']}", "EMPLOYEE_SYNC")
 
