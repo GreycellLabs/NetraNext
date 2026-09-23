@@ -707,14 +707,25 @@ def store_journey(journey_data):
             action = "updated"
         else:
             # Create a new Journey for the tracked route
-            journey_doc = frappe.get_doc(doc_data)
-            journey_doc.insert(ignore_permissions=True)
-            # Commit immediately so concurrent duplicate syncs waiting on the
-            # lock can see this row instead of inserting their own copy.
-            frappe.db.commit()
+            try:
+                journey_doc = frappe.get_doc(doc_data)
+                journey_doc.insert(ignore_permissions=True)
+                frappe.db.commit()
+                action = "stored"
+            except frappe.DuplicateEntryError:
+                # Concurrent request created it while this request was processing
+                existing_journey = find_existing_journey()
+                if existing_journey:
+                    journey_doc = frappe.get_doc("NetraNext Journey", existing_journey)
+                    for field, value in doc_data.items():
+                        if field != "doctype" and value is not None:
+                            journey_doc.set(field, value)
+                    journey_doc.save(ignore_permissions=True)
+                    action = "updated"
+                else:
+                    raise
             if lock_acquired:
                 frappe.cache().delete_value(lock_key)
-            action = "stored"
 
         # If this journey is "In Progress", ensure no other journeys for this employee are "In Progress"
         if doc_data.get("status") == "In Progress":

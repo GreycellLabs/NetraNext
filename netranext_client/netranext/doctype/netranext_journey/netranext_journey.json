@@ -78,7 +78,7 @@
    "fieldname": "flutter_journey_id",
    "fieldtype": "Data",
    "label": "Flutter Journey ID",
-   "unique": 0
+   "unique": 1
   },
   {
    "fieldname": "user_id",
