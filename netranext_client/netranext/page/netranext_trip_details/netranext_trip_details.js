@@ -639,6 +639,38 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             var polyline = L.polyline(latLngs, { color: '#2563eb', weight: 4, opacity: 0.8 }).addTo(page.trip_map);
             page.trip_map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
 
+            // Fetch free OSRM road matching to snap line smoothly onto openstreetmap roads
+            (function(targetPolyline, originalCoords) {
+                if (!originalCoords || originalCoords.length < 2) return;
+                
+                var sampleStep = Math.max(1, Math.floor(originalCoords.length / 80));
+                var sampled = [];
+                for (var i = 0; i < originalCoords.length; i += sampleStep) {
+                    sampled.push(originalCoords[i]);
+                }
+                if (sampled[sampled.length - 1] !== originalCoords[originalCoords.length - 1]) {
+                    sampled.push(originalCoords[originalCoords.length - 1]);
+                }
+
+                var osrmCoordsStr = sampled.map(function(c) { return c[1] + ',' + c[0]; }).join(';');
+                var osrmUrl = 'https://router.project-osrm.org/match/v1/driving/' + osrmCoordsStr + '?overview=full&geometries=geojson';
+
+                fetch(osrmUrl)
+                    .then(function(res) { return res.json(); })
+                    .then(function(data) {
+                        if (data && data.matchings && data.matchings[0] && data.matchings[0].geometry) {
+                            var matchedGeo = data.matchings[0].geometry.coordinates;
+                            var snappedLatLngs = matchedGeo.map(function(pt) { return [pt[1], pt[0]]; });
+                            if (snappedLatLngs && snappedLatLngs.length > 1) {
+                                targetPolyline.setLatLngs(snappedLatLngs);
+                            }
+                        }
+                    })
+                    .catch(function(err) {
+                        console.warn('OSRM free match fallback (using raw coords):', err);
+                    });
+            })(polyline, latLngs);
+
             L.marker(latLngs[0]).addTo(page.trip_map)
                 .bindPopup('<b>🚀 Trip Start</b><br>' + latLngs[0][0] + ', ' + latLngs[0][1]);
 

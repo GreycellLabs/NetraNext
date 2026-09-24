@@ -546,10 +546,39 @@
                 lineJoin: 'round'
             }).addTo(mapViewData.map);
 
-            // Draw the exact route recorded during the trip.
-            // Do NOT re-route via a routing service (e.g. OSRM /route): it would snap the
-            // waypoints to its own fastest/alternative road path, showing a route different
-            // from the one actually travelled, and could change between renders.
+            // Fetch free OSRM road matching to snap line smoothly onto openstreetmap roads
+            (function(targetPolyline, originalCoords) {
+                if (!originalCoords || originalCoords.length < 2) return;
+                
+                // Format coordinates as lng,lat;lng,lat for OSRM Match API
+                // OSRM match URL accepts max 100 waypoints per request chunk
+                var sampleStep = Math.max(1, Math.floor(originalCoords.length / 80));
+                var sampled = [];
+                for (var i = 0; i < originalCoords.length; i += sampleStep) {
+                    sampled.push(originalCoords[i]);
+                }
+                if (sampled[sampled.length - 1] !== originalCoords[originalCoords.length - 1]) {
+                    sampled.push(originalCoords[originalCoords.length - 1]);
+                }
+
+                var osrmCoordsStr = sampled.map(function(c) { return c[1] + ',' + c[0]; }).join(';');
+                var osrmUrl = 'https://router.project-osrm.org/match/v1/driving/' + osrmCoordsStr + '?overview=full&geometries=geojson';
+
+                fetch(osrmUrl)
+                    .then(function(res) { return res.json(); })
+                    .then(function(data) {
+                        if (data && data.matchings && data.matchings[0] && data.matchings[0].geometry) {
+                            var matchedGeo = data.matchings[0].geometry.coordinates;
+                            var snappedLatLngs = matchedGeo.map(function(pt) { return [pt[1], pt[0]]; });
+                            if (snappedLatLngs && snappedLatLngs.length > 1) {
+                                targetPolyline.setLatLngs(snappedLatLngs);
+                            }
+                        }
+                    })
+                    .catch(function(err) {
+                        console.warn('OSRM free match fallback (using raw coords):', err);
+                    });
+            })(polyline, coords);
 
             if (isSelected) {
                 polyline.bringToFront();
