@@ -1685,10 +1685,10 @@ def get_shift_reminders():
                     f"Start={start_dt.strftime('%H:%M:%S')}, End={end_dt.strftime('%H:%M:%S')}"
                 )
 
-                # Check-in reminder window (from 15 minutes before shift start to 30 minutes after)
+                # Check-in reminder window (from shift start to 30 minutes after)
                 time_since_start = (now_naive - start_dt).total_seconds() / 60
                 debug_logs.append(f"  Check-in: time_since_start = {time_since_start:.2f} minutes.")
-                if -15 <= time_since_start <= 30:
+                if 0 <= time_since_start <= 30:
                     # Check if check-in log exists within the past 4 hours from shift start
                     # (converted to naive UTC — the format Employee Checkin time is stored in)
                     checkin_threshold_utc = to_utc_naive(start_dt - timedelta(hours=4))
@@ -1708,18 +1708,19 @@ def get_shift_reminders():
                     else:
                         debug_logs.append("  Check-in: Skipped because check-in log already exists.")
                 else:
-                    debug_logs.append(f"  Check-in: Skipped because time_since_start ({time_since_start:.2f} mins) is outside -15..30 window.")
+                    debug_logs.append(f"  Check-in: Skipped because time_since_start ({time_since_start:.2f} mins) is outside 0..30 window.")
 
-                # Check-out reminder window (from 15 minutes before shift end to 30 minutes after)
+                # Check-out reminder window (from shift end to 30 minutes after)
                 time_since_end = (now_naive - end_dt).total_seconds() / 60
                 debug_logs.append(f"  Check-out: time_since_end = {time_since_end:.2f} minutes.")
-                if -15 <= time_since_end <= 30:
-                    # 1. Verify employee actually checked in for this shift
-                    checkin_threshold_utc = to_utc_naive(start_dt - timedelta(hours=4))
+                if 0 <= time_since_end <= 30:
+                    # 1. Verify employee actually checked in for this shift (between shift start - 2 hours and shift end)
+                    checkin_start_threshold_utc = to_utc_naive(start_dt - timedelta(hours=2))
+                    checkin_end_threshold_utc = to_utc_naive(end_dt + timedelta(minutes=30))
                     checkin_exists = frappe.db.exists("Employee Checkin", {
                         "employee": emp.name,
                         "log_type": "IN",
-                        "time": [">=", checkin_threshold_utc]
+                        "time": ["between", [checkin_start_threshold_utc, checkin_end_threshold_utc]]
                     })
 
                     if not checkin_exists:
@@ -1744,7 +1745,7 @@ def get_shift_reminders():
                     else:
                         debug_logs.append("  Check-out: Skipped because check-out log already exists.")
                 else:
-                    debug_logs.append(f"  Check-out: Skipped because time_since_end ({time_since_end:.2f} mins) is outside -15..30 window.")
+                    debug_logs.append(f"  Check-out: Skipped because time_since_end ({time_since_end:.2f} mins) is outside 0..30 window.")
 
         # Log all debug statements
         frappe.log_error(title="Shift Reminders Client Debug", message="\n".join(debug_logs))

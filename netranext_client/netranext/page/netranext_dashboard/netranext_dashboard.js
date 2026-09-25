@@ -282,7 +282,7 @@ function refresh_dashboard_data() {
             attendance_page: window.currentFilters.attendance.page,
             attendance_employee: window.currentFilters.attendance.employee
         },
-        callback: function(response) {
+        callback: function (response) {
             console.log("API Response:", response);
 
             if (response.message && response.message.status === 'success') {
@@ -313,7 +313,7 @@ function refresh_dashboard_data() {
             }
             set_loading(false);
         },
-        error: function(xhr, status, error) {
+        error: function (xhr, status, error) {
             console.error("API Error:", xhr, status, error);
             var error_msg = "Failed to connect to dashboard API";
             if (xhr.responseJSON && xhr.responseJSON.message) {
@@ -725,9 +725,9 @@ function show_schedule_trip_dialog() {
                         destination_address: values.destination_address
                     }
                 },
-                callback: function(r) {
+                callback: function (r) {
                     if (!r.exc) {
-                        frappe.show_alert({message: __('Trip Scheduled Successfully'), indicator: 'green'});
+                        frappe.show_alert({ message: __('Trip Scheduled Successfully'), indicator: 'green' });
                         dialog.hide();
                         refresh_dashboard_data();
                     }
