@@ -85,31 +85,31 @@ pages_dict = {
         "title": "NetraNext Dashboard",
         "route": "/app/netranext-dashboard",
         "icon": "fa-dashboard",
-        "roles": ["System Manager", "HR Manager", "HR User"]
+        "roles": ["System Manager", "HR Manager", "HR User", "Employee", "All"]
     },
     "netranext-live-tracking": {
         "title": "Live Tracking",
         "route": "/app/netranext-live-tracking",
         "icon": "fa-map-marker",
-        "roles": ["System Manager", "HR Manager", "HR User"]
+        "roles": ["System Manager", "HR Manager", "HR User", "Employee", "All"]
     },
     "netranext-trip-history": {
         "title": "Trip History",
         "route": "/app/netranext-trip-history",
         "icon": "fa-history",
-        "roles": ["System Manager", "HR Manager", "HR User"]
+        "roles": ["System Manager", "HR Manager", "HR User", "Employee", "All"]
     },
     "netranext-trip-details": {
         "title": "Trip Details",
         "route": "/app/netranext-trip-details",
         "icon": "fa-info-circle",
-        "roles": ["System Manager", "HR Manager", "HR User", "All"]
+        "roles": ["System Manager", "HR Manager", "HR User", "Employee", "All"]
     },
     "netranext-expense-claims": {
         "title": "Expense Claim List",
         "route": "/app/netranext-expense-claims",
         "icon": "fa-money",
-        "roles": ["System Manager", "HR Manager", "HR User", "All"]
+        "roles": ["System Manager", "HR Manager", "HR User", "Employee", "All"]
     }
 }
 
