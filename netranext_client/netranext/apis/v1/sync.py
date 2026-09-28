@@ -141,6 +141,40 @@ def get_employee_data(employee_id=None, user_id=None):
 
         employee_data["custom_user_link"] = "\n".join(user_links_list) if user_links_list else None
 
+        # Add shift details
+        try:
+            from hrms.hr.doctype.shift_assignment.shift_assignment import get_employee_shift
+            shift_info = get_employee_shift(employee_data["name"], frappe.utils.now_datetime(), consider_default_shift=True)
+            if shift_info and shift_info.get("shift_type"):
+                st = shift_info.get("shift_type")
+                st_name = st.name if hasattr(st, "name") else (st.get("name") if isinstance(st, dict) else str(st))
+                employee_data["shift_details"] = {
+                    "shift_name": st_name,
+                    "start_time": str(shift_info.get("start_datetime")) if shift_info.get("start_datetime") else None,
+                    "end_time": str(shift_info.get("end_datetime")) if shift_info.get("end_datetime") else None
+                }
+            else:
+                # Fallback to default_shift field on Employee doc
+                def_shift = getattr(employee_doc, "default_shift", None)
+                if def_shift:
+                    employee_data["shift_details"] = {
+                        "shift_name": def_shift,
+                        "start_time": None,
+                        "end_time": None
+                    }
+                else:
+                    employee_data["shift_details"] = None
+        except Exception as e:
+            def_shift = getattr(employee_doc, "default_shift", None)
+            if def_shift:
+                employee_data["shift_details"] = {
+                    "shift_name": def_shift,
+                    "start_time": None,
+                    "end_time": None
+                }
+            else:
+                employee_data["shift_details"] = None
+
         tenant_bench_logger.info(f"Employee data retrieved: {employee_data['name']}", "EMPLOYEE_SYNC")
 
         return create_success_response(
