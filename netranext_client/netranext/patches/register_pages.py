@@ -116,7 +116,12 @@ def execute():
                     "role": role
                 })
 
-            page_doc.insert(ignore_permissions=True)
+            orig_dev_mode = getattr(frappe.conf, "developer_mode", 0)
+            frappe.conf.developer_mode = 1
+            try:
+                page_doc.insert(ignore_permissions=True)
+            finally:
+                frappe.conf.developer_mode = orig_dev_mode
             frappe.db.commit()
 
             print(f"✅ Created page: {page_name}")
