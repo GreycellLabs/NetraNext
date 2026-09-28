@@ -1,5 +1,13 @@
 frappe.ui.form.on('Employee Checkin', {
     refresh: function(frm) {
+        // Hide face status & face failure reason if empty (e.g. direct check-in)
+        if (frm.fields_dict.custom_face_status) {
+            frm.set_df_property('custom_face_status', 'hidden', !frm.doc.custom_face_status ? 1 : 0);
+        }
+        if (frm.fields_dict.custom_face_failure_reason) {
+            frm.set_df_property('custom_face_failure_reason', 'hidden', !frm.doc.custom_face_failure_reason ? 1 : 0);
+        }
+
         // Hide standard photo preview to prevent duplicate image rendering
         if (frm.fields_dict.photo_preview) {
             frm.set_df_property('photo_preview', 'hidden', 1);

@@ -360,8 +360,8 @@ def store_attendance(att_data):
                             in_geofence = True
                             break
 
-        face_status = att_data.get("custom_face_status", "Approved")
-        face_failure_reason = att_data.get("custom_face_failure_reason")
+        face_status = att_data.get("custom_face_status")
+        face_failure_reason = att_data.get("custom_face_failure_reason") if face_status else None
 
         checkin_doc = frappe.get_doc({
             "doctype": "Employee Checkin",
@@ -373,7 +373,7 @@ def store_attendance(att_data):
             "longitude": longitude,
             "location_address": att_data.get("location_address"),
             "photo_proof": local_photo_url,
-            "skip_auto_attendance": 0 if (in_geofence and face_status == "Approved") else 1,
+            "skip_auto_attendance": 0 if (in_geofence and (face_status is None or face_status == "Approved")) else 1,
             "custom_location_status": "Approved" if in_geofence else "Pending Approval",
             "custom_face_status": face_status,
             "custom_face_failure_reason": face_failure_reason
