@@ -602,15 +602,18 @@ def store_journey(journey_data):
         # Optional fields (incl. the expensive odometer photo downloads) are
         # attached AFTER the duplicate lookup below so that concurrent syncs of
         # the same journey resolve to a single record instead of racing.
+        status_val = journey_data.get("status", "Completed")
+        is_in_progress = (status_val == "In Progress")
+
         doc_data = {
             "doctype": "NetraNext Journey",
             "employee": journey_data["employee_id"],
             "journey_date": journey_date,
             "start_time": start_time_raw,
-            "end_time": end_time_raw,
+            "end_time": None if is_in_progress else end_time_raw,
             "start_location": journey_data.get("start_location"),
-            "end_location": journey_data.get("end_location"),
-            "status": journey_data.get("status", "Completed"),
+            "end_location": None if is_in_progress else journey_data.get("end_location"),
+            "status": status_val,
         }
 
         flutter_journey_id = journey_data.get("journey_id")
