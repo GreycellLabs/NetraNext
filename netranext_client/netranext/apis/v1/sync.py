@@ -1636,6 +1636,163 @@ def extend_trip(trip_id=None, reason=None, new_destination=None):
         return handle_api_exception(e, "JOURNEY_SYNC")
 
 @frappe.whitelist(allow_guest=True)
+def _get_holiday_data_for_employee(employee_id, from_date, to_date):
+	"""
+	Read the employee's Holiday List rows between the two dates.
+
+	Returns (holidays, weekly_off_weekdays):
+	- holidays: [{'date': 'YYYY-MM-DD', 'name': str, 'weekly_off': bool}]
+	- weekly_off_weekdays: recurring weekly-off weekday numbers (Python:
+	  Monday=0 .. Sunday=6). A weekday qualifies when the list marks it
+	  weekly off at least 4 times in the window, so a one-off row (e.g. a
+	  single compensation-off Wednesday) never mutes that weekday forever.
+
+	The recurring-weekday rule keeps weekends correct even for dates beyond
+	the holiday list's own range (lists typically span one year).
+	"""
+	holiday_list = frappe.db.get_value("Employee", employee_id, "holiday_list")
+	if not holiday_list:
+		company = frappe.db.get_value("Employee", employee_id, "company")
+		if company:
+			holiday_list = frappe.db.get_value("Company", company, "default_holiday_list")
+	if not holiday_list:
+		return [], set()
+
+	rows = frappe.get_all(
+		"Holiday",
+		filters={"parent": holiday_list, "holiday_date": ["between", [from_date, to_date]]},
+		fields=["holiday_date", "description", "weekly_off"],
+		order_by="holiday_date asc",
+	)
+
+	holidays = []
+	weekday_counts = {}
+	for row in rows:
+		day = frappe.utils.getdate(row.holiday_date)
+		holidays.append({
+			"date": str(day),
+			"name": row.description or "Holiday",
+			"weekly_off": bool(row.weekly_off),
+		})
+		if row.weekly_off:
+			weekday_counts[day.weekday()] = weekday_counts.get(day.weekday(), 0) + 1
+
+	weekly_off_weekdays = {wd for wd, count in weekday_counts.items() if count >= 4}
+	return holidays, weekly_off_weekdays
+
+
+def _get_approved_leave_days(employee_id, from_date, to_date):
+	"""
+	Expand the employee's Approved Leave Applications into individual dates.
+	Half-day leaves keep their half_day flag so consumers can keep alarms on
+	for the working half of the day.
+	"""
+	leaves = []
+	try:
+		applications = frappe.get_all(
+			"Leave Application",
+			filters={
+				"employee": employee_id,
+				"status": "Approved",
+				"from_date": ["<=", to_date],
+				"to_date": [">=", from_date],
+			},
+			fields=["from_date", "to_date", "leave_type", "half_day", "half_day_date"],
+			order_by="from_date asc",
+		)
+	except Exception as e:
+		# Leave Application lives in HRMS; tolerate setups where it is unavailable.
+		tenant_bench_logger.warning(f"Leave Application lookup failed for {employee_id}: {e}", "SYNC")
+		return leaves
+
+	for application in applications:
+		label = application.leave_type or "Approved Leave"
+		cursor = frappe.utils.getdate(application.from_date)
+		end = frappe.utils.getdate(application.to_date)
+		half_day_date = str(application.half_day_date) if application.half_day and application.half_day_date else None
+		# Cap the expansion so an absurdly long application cannot balloon the payload.
+		for _ in range(370):
+			if cursor > end:
+				break
+			leaves.append({
+				"date": str(cursor),
+				"name": label,
+				"half_day": half_day_date == str(cursor),
+			})
+			cursor = frappe.utils.add_days(cursor, 1)
+	return leaves
+
+
+def _get_muted_shift_dates(employee_id, from_date, to_date):
+	"""
+	Dates within [from_date, to_date] on which shift reminders must NOT be
+	sent: any explicit holiday row, any recurring weekly-off weekday, or a
+	FULL-day approved leave (half-day leaves keep their alarms — the employee
+	still works half the day).
+	"""
+	holidays, weekly_off_weekdays = _get_holiday_data_for_employee(employee_id, from_date, to_date)
+	muted = {h["date"] for h in holidays}
+	muted.update(l["date"] for l in _get_approved_leave_days(employee_id, from_date, to_date) if not l["half_day"])
+
+	cursor = frappe.utils.getdate(from_date)
+	end = frappe.utils.getdate(to_date)
+	while cursor <= end:
+		if cursor.weekday() in weekly_off_weekdays:
+			muted.add(str(cursor))
+		cursor = frappe.utils.add_days(cursor, 1)
+	return muted
+
+
+@frappe.whitelist(allow_guest=True)
+def get_non_working_days(user_id=None, employee_id=None, from_date=None, to_date=None):
+	"""
+	Non-working days (official holidays, recurring weekly offs, approved
+	leaves) for one employee. Called by the central server for the mobile
+	app's Holidays & Off-Days screen and shift-alarm muting.
+
+	Args:
+		employee_id: Employee ID (optional)
+		user_id: User ID linked to the employee (optional)
+		from_date / to_date: 'YYYY-MM-DD' window; defaults to today-30 .. today+395
+
+	Returns:
+		dict: weekly_off_days (Python weekday numbers, Monday=0), holidays
+		(with names), leaves (with half_day flags)
+	"""
+	try:
+		validate_sync_request()
+
+		if not employee_id and not user_id:
+			raise ValidationException("Either employee_id or user_id is required")
+
+		filters = {}
+		if employee_id:
+			filters["name"] = employee_id
+		if user_id:
+			filters["user_id"] = user_id
+		employees = frappe.get_all("Employee", filters=filters, fields=["name"], limit=1)
+		if not employees:
+			raise ResourceNotFoundException("Employee")
+		employee_id = employees[0]["name"]
+
+		today = frappe.utils.today()
+		from_date = str(from_date or frappe.utils.add_days(today, -30))
+		to_date = str(to_date or frappe.utils.add_days(today, 395))
+
+		holidays, weekly_off_weekdays = _get_holiday_data_for_employee(employee_id, from_date, to_date)
+		leaves = _get_approved_leave_days(employee_id, from_date, to_date)
+
+		return create_success_response("Non-working days fetched successfully", {
+			"from_date": from_date,
+			"to_date": to_date,
+			"weekly_off_days": sorted(weekly_off_weekdays),
+			"holidays": holidays,
+			"leaves": leaves,
+		})
+	except Exception as e:
+		return handle_api_exception(e, "EMPLOYEE_SYNC")
+
+
 def get_shift_reminders():
     """
     Get shift reminders (check-in/check-out) for active employees
@@ -1712,6 +1869,11 @@ def get_shift_reminders():
                 debug_logs.append(f"Employee {emp.employee_name} ({emp.name}) skipped: No shift found for today.")
                 continue
 
+            # Dates this employee must not be reminded on (holiday / weekly
+            # off / full-day approved leave). Computed lazily on the first
+            # reminder candidate so the every-5-minutes cron stays cheap.
+            muted_dates = None
+
             for shift_details in candidates.values():
                 shift_name = shift_details.get("shift_type").get("name") if isinstance(shift_details.get("shift_type"), dict) else shift_details.get("shift_type")
                 start_dt = to_naive_local(shift_details.get("start_datetime"))
@@ -1735,13 +1897,24 @@ def get_shift_reminders():
                         "time": [">=", checkin_threshold_utc]
                     })
                     if not checkin_exists:
-                        reminders.append({
-                            "user_id": emp.user_id,
-                            "employee_name": emp.employee_name,
-                            "type": "check_in",
-                            "shift_time": start_dt.strftime('%I:%M %p')
-                        })
-                        debug_logs.append("  Check-in: Added to reminder list.")
+                        # Smart muting: no check-in alarm on holidays, weekly
+                        # offs and full-day approved leaves.
+                        if muted_dates is None:
+                            muted_dates = _get_muted_shift_dates(
+                                emp.name,
+                                frappe.utils.add_days(now_naive.date(), -1),
+                                frappe.utils.add_days(now_naive.date(), 1),
+                            )
+                        if str(start_dt.date()) in muted_dates:
+                            debug_logs.append("  Check-in: Skipped — non-working day (holiday / weekly off / approved leave).")
+                        else:
+                            reminders.append({
+                                "user_id": emp.user_id,
+                                "employee_name": emp.employee_name,
+                                "type": "check_in",
+                                "shift_time": start_dt.strftime('%I:%M %p')
+                            })
+                            debug_logs.append("  Check-in: Added to reminder list.")
                     else:
                         debug_logs.append("  Check-in: Skipped because check-in log already exists.")
                 else:
@@ -1772,13 +1945,24 @@ def get_shift_reminders():
                         "time": [">=", checkout_threshold_utc]
                     })
                     if not checkout_exists:
-                        reminders.append({
-                            "user_id": emp.user_id,
-                            "employee_name": emp.employee_name,
-                            "type": "check_out",
-                            "shift_time": end_dt.strftime('%I:%M %p')
-                        })
-                        debug_logs.append("  Check-out: Added to reminder list.")
+                        # Smart muting keyed on the shift END date (night
+                        # shifts can end on the following day).
+                        if muted_dates is None:
+                            muted_dates = _get_muted_shift_dates(
+                                emp.name,
+                                frappe.utils.add_days(now_naive.date(), -1),
+                                frappe.utils.add_days(now_naive.date(), 1),
+                            )
+                        if str(end_dt.date()) in muted_dates:
+                            debug_logs.append("  Check-out: Skipped — non-working day (holiday / weekly off / approved leave).")
+                        else:
+                            reminders.append({
+                                "user_id": emp.user_id,
+                                "employee_name": emp.employee_name,
+                                "type": "check_out",
+                                "shift_time": end_dt.strftime('%I:%M %p')
+                            })
+                            debug_logs.append("  Check-out: Added to reminder list.")
                     else:
                         debug_logs.append("  Check-out: Skipped because check-out log already exists.")
                 else:
