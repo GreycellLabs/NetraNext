@@ -46,6 +46,16 @@ class NetraNextSettings(Document):
         if db_val and self.central_server_url != db_val:
             frappe.throw(_("Central Server URL is fixed and cannot be modified once set."))
 
+    def get_api_key(self):
+        """Safely retrieve api_key password without throwing if not saved in __Auth yet"""
+        try:
+            token = self.get_password("api_key", raise_exception=False)
+            if token:
+                return token
+        except Exception:
+            pass
+        return self.api_key or ""
+
     def test_connection(self):
         """Test connection to central NetraNext server"""
         try:
@@ -59,7 +69,7 @@ class NetraNextSettings(Document):
                 logo_url = frappe.utils.get_url(logo_url)
 
             headers = {
-                "X-NetraNext-Token": self.get_password("api_key"),
+                "X-NetraNext-Token": self.get_api_key(),
                 "X-Client-Site-Url": frappe.utils.get_url(),
                 "X-Client-Logo-Url": logo_url or ""
             }
@@ -120,7 +130,7 @@ class NetraNextSettings(Document):
     def get_api_credentials(self):
         """Get API credentials for making requests"""
         return {
-            "integration_token": self.get_password("api_key"),
+            "integration_token": self.get_api_key(),
             "central_server_url": self.central_server_url
         }
 
@@ -128,7 +138,7 @@ class NetraNextSettings(Document):
         """Reveal the integration token (decrypted api_key)"""
         if "System Manager" not in frappe.get_roles():
             frappe.throw(_("Not authorized to reveal integration token"))
-        return self.get_password("api_key")
+        return self.get_api_key()
 
     def validate_business_logo(self):
         if not self.business_logo:
@@ -285,7 +295,7 @@ class NetraNextSettings(Document):
         try:
             url = f"{self.central_server_url.rstrip('/')}/api/method/netranext.apis.v1.tenant_onboarding.update_tenant_status_from_client"
             headers = {
-                "X-NetraNext-Token": self.get_password("api_key"),
+                "X-NetraNext-Token": self.get_api_key(),
                 "Content-Type": "application/json"
             }
             
