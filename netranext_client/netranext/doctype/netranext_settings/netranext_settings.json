@@ -98,7 +98,7 @@
    "fieldtype": "Data",
    "label": "Central Server URL",
    "hidden": 1,
-   "reqd": 1
+   "reqd": 0
   },
   {
    "fieldname": "api_key",

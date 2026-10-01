@@ -3,9 +3,11 @@
 
 frappe.ui.form.on('NetraNext Settings', {
     refresh: function(frm) {
-        // Prefill the central server URL if it is empty, so it is always populated and visible
-        if (!frm.doc.central_server_url && window.NetraNextConfig) {
-            frm.set_value('central_server_url', window.NetraNextConfig.apiBaseUrl);
+        // Ensure Central Server URL has default value populated
+        if (!frm.doc.central_server_url) {
+            let defaultUrl = (window.NetraNextConfig && window.NetraNextConfig.apiBaseUrl) ? 
+                window.NetraNextConfig.apiBaseUrl : 'https://netranext.m.frappe.cloud';
+            frm.set_value('central_server_url', defaultUrl);
         }
 
         if (!frm.doc.expense_claim_type) {

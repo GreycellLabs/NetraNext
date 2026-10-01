@@ -37,14 +37,8 @@ class NetraNextSettings(Document):
         if not self.api_key:
             frappe.throw(_("API Key is required"))
 
-        if not self.central_server_url:
-            frappe.throw(_("Central Server URL is required"))
-
     def prevent_central_server_url_change(self):
-        # Prevent editing Central Server URL once it has been saved
-        db_val = frappe.db.get_single_value("NetraNext Settings", "central_server_url")
-        if db_val and self.central_server_url != db_val:
-            frappe.throw(_("Central Server URL is fixed and cannot be modified once set."))
+        pass
 
     def get_api_key(self):
         """Safely retrieve api_key password without throwing if not saved in __Auth yet"""
