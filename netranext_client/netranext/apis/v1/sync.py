@@ -2037,3 +2037,132 @@ def get_upcoming_trips():
         frappe.log_error(title="Upcoming Trips Client Exception", message=f"{str(e)}\nLogs:\n" + "\n".join(debug_logs))
         return handle_api_exception(e, "EMPLOYEE_SYNC")
 
+
+@frappe.whitelist(allow_guest=True)
+def apply_leave(leave_data=None):
+    """
+    Apply for leave on tenant bench.
+    Creates Leave Application record on tenant bench.
+    """
+    try:
+        validate_sync_request()
+        if isinstance(leave_data, str):
+            import json
+            leave_data = json.loads(leave_data)
+
+        req_dict = leave_data or frappe.form_dict or {}
+
+        user_id = req_dict.get("user_id")
+        employee_id = req_dict.get("employee_id")
+        if not employee_id and user_id:
+            employee_id = frappe.db.get_value("Employee", {"user_id": user_id}, "name") or \
+                          frappe.db.get_value("Employee", {"prefered_email": user_id}, "name") or \
+                          frappe.db.get_value("Employee", {"company_email": user_id}, "name") or \
+                          frappe.db.get_value("Employee", {"personal_email": user_id}, "name")
+
+        if not employee_id:
+            return create_error_response("No Employee record linked to your user account")
+
+        leave_doc = frappe.get_doc({
+            "doctype": "Leave Application",
+            "employee": employee_id,
+            "leave_type": req_dict.get("leave_type"),
+            "from_date": req_dict.get("from_date"),
+            "to_date": req_dict.get("to_date"),
+            "half_day": 1 if int(req_dict.get("half_day") or 0) == 1 else 0,
+            "half_day_date": req_dict.get("half_day_date") or (req_dict.get("from_date") if int(req_dict.get("half_day") or 0) == 1 else None),
+            "description": req_dict.get("reason") or "",
+            "status": "Open",
+            "posting_date": frappe.utils.nowdate()
+        })
+        leave_doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        from_d = req_dict.get("from_date")
+        to_d = req_dict.get("to_date")
+
+        return create_success_response(
+            "Leave application submitted successfully",
+            data={
+                "name": leave_doc.name,
+                "status": leave_doc.status,
+                "leave_type": leave_doc.leave_type,
+                "from_date": str(leave_doc.from_date),
+                "to_date": str(leave_doc.to_date),
+                "total_leave_days": getattr(leave_doc, "total_leave_days", None) or (frappe.utils.date_diff(to_d, from_d) + 1 if from_d and to_d else 1)
+            }
+        )
+    except Exception as e:
+        return handle_api_exception(e, "LEAVE_SYNC")
+
+
+@frappe.whitelist(allow_guest=True)
+def get_leave_applications(user_id=None, employee_id=None, status=None):
+    try:
+        validate_sync_request()
+        req_dict = frappe.form_dict or {}
+        user_id = user_id or req_dict.get("user_id")
+        employee_id = employee_id or req_dict.get("employee_id")
+        status = status or req_dict.get("status")
+
+        if not employee_id and user_id:
+            employee_id = frappe.db.get_value("Employee", {"user_id": user_id}, "name") or \
+                          frappe.db.get_value("Employee", {"prefered_email": user_id}, "name") or \
+                          frappe.db.get_value("Employee", {"company_email": user_id}, "name") or \
+                          frappe.db.get_value("Employee", {"personal_email": user_id}, "name")
+
+        if not employee_id:
+            return create_success_response("No employee record found", data=[])
+
+        filters = {"employee": employee_id}
+        if status and status != "All":
+            filters["status"] = status
+
+        applications = frappe.get_all(
+            "Leave Application",
+            filters=filters,
+            fields=[
+                "name",
+                "leave_type",
+                "from_date",
+                "to_date",
+                "total_leave_days",
+                "half_day",
+                "description",
+                "status",
+                "posting_date",
+                "modified"
+            ],
+            order_by="creation desc"
+        )
+        return create_success_response("Leave applications fetched successfully", data=applications)
+    except Exception as e:
+        return handle_api_exception(e, "LEAVE_SYNC")
+
+
+@frappe.whitelist(allow_guest=True)
+def get_leave_types():
+    try:
+        validate_sync_request()
+        if frappe.db.exists("DocType", "Leave Type"):
+            leave_types = frappe.get_all(
+                "Leave Type",
+                filters={"is_active": 1} if frappe.db.has_column("Leave Type", "is_active") else {},
+                fields=["name", "name as leave_type_name", "max_leaves_allowed"]
+            )
+        else:
+            leave_types = []
+
+        if not leave_types:
+            leave_types = [
+                {"name": "Casual Leave", "leave_type_name": "Casual Leave"},
+                {"name": "Sick Leave", "leave_type_name": "Sick Leave"},
+                {"name": "Privilege Leave", "leave_type_name": "Privilege Leave"},
+                {"name": "Earned Leave", "leave_type_name": "Earned Leave"},
+                {"name": "Leave Without Pay", "leave_type_name": "Leave Without Pay"}
+            ]
+        return create_success_response("Leave types fetched successfully", data=leave_types)
+    except Exception as e:
+        return handle_api_exception(e, "LEAVE_SYNC")
+
+
