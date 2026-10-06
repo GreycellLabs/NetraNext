@@ -2153,7 +2153,10 @@ def get_leave_types(user_id=None, employee_id=None):
         employee_id = employee_id or frappe.form_dict.get("employee_id")
 
         if not employee_id and user_id:
-            employee_id = frappe.db.get_value("Employee", {"user_id": user_id}, "name")
+            employee_id = frappe.db.get_value("Employee", {"user_id": user_id}, "name") or \
+                          frappe.db.get_value("Employee", {"prefered_email": user_id}, "name") or \
+                          frappe.db.get_value("Employee", {"company_email": user_id}, "name") or \
+                          frappe.db.get_value("Employee", {"personal_email": user_id}, "name")
 
         allocated_details = {}
         lwps = []
@@ -2184,13 +2187,13 @@ def get_leave_types(user_id=None, employee_id=None):
                 {"name": "Leave Without Pay", "leave_type_name": "Leave Without Pay"}
             ]
 
-        # If employee has allocated leaves, filter and enrich types with balances
+        # If employee has allocated leaves, filter down to ONLY allocated leave types (+ LWPs)
         leave_types = []
         if allocated_details:
             allowed_names = set(allocated_details.keys()).union(set(lwps))
             for t in all_types:
                 t_name = t["name"]
-                if t_name in allowed_names or not allocated_details:
+                if t_name in allowed_names:
                     bal = allocated_details.get(t_name, {})
                     t["total_leaves"] = bal.get("total_leaves", 0.0)
                     t["leaves_taken"] = bal.get("leaves_taken", 0.0)
