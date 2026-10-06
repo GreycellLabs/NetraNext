@@ -133,8 +133,8 @@ def execute():
         ws_doc.public = 1
         ws_doc.is_hidden = 0
         ws_doc.sequence_id = 1.0
-        if hasattr(ws_doc, "type") and not ws_doc.type:
-            ws_doc.type = "Module"
+        if hasattr(ws_doc, "type"):
+            ws_doc.type = "Workspace"
         ws_doc.roles = []
         for role in roles_to_assign:
             ws_doc.append("roles", {"role": role})

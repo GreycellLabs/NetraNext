@@ -11,7 +11,7 @@
  "indicator_color": "green",
  "is_hidden": 0,
  "label": "NetraNext",
- "type": "Module",
+ "type": "Workspace",
  "links": [
   {
    "hidden": 0,

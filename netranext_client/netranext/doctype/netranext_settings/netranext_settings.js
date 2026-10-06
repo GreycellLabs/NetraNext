@@ -1,8 +1,15 @@
-// Copyright (c) 2024, NetraNext and contributors
+ // Copyright (c) 2024, NetraNext and contributors
 // For license information, please see license.txt
 
 frappe.ui.form.on('NetraNext Settings', {
+    onload: function(frm) {
+        frm.set_df_property('central_server_url', 'reqd', 0);
+        if (!frm.doc.central_server_url) {
+            frm.set_value('central_server_url', 'https://netranext.m.frappe.cloud');
+        }
+    },
     refresh: function(frm) {
+        frm.set_df_property('central_server_url', 'reqd', 0);
         // Ensure Central Server URL has default value populated
         if (!frm.doc.central_server_url) {
             let defaultUrl = (window.NetraNextConfig && window.NetraNextConfig.apiBaseUrl) ? 
@@ -63,7 +70,12 @@ frappe.ui.form.on('NetraNext Settings', {
             });
         }
     },
-
+    before_save: function(frm) {
+        frm.set_df_property('central_server_url', 'reqd', 0);
+        if (!frm.doc.central_server_url) {
+            frm.set_value('central_server_url', 'https://netranext.m.frappe.cloud');
+        }
+    },
     after_save: function(frm) {
         // After saving, if token exists, automatically test connection
         if (frm.doc.api_key) {
