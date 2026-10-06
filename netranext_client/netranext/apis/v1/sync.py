@@ -813,7 +813,7 @@ def store_journey(journey_data):
             scheduled_trip = frappe.get_doc("Scheduled Trip", trip_id)
             tenant_bench_logger.info(f"Found Scheduled Trip {trip_id} with current status {scheduled_trip.status}. Setting to {doc_data.get('status')}", "JOURNEY_SYNC")
             
-            if doc_data.get("status") == "Completed":
+            if doc_data.get("status") in ["Completed", "Ended"] or not is_in_progress:
                 scheduled_trip.status = "Completed"
                 scheduled_trip.journey_reference = journey_doc.name
                 scheduled_trip.save(ignore_permissions=True)
