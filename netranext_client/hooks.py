@@ -186,13 +186,13 @@ pages_dict = {
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Leave Application": {
+		"on_update": "netranext_client.netranext.apis.v1.sync.send_leave_notification_to_employee",
+		"on_submit": "netranext_client.netranext.apis.v1.sync.send_leave_notification_to_employee",
+		"on_change": "netranext_client.netranext.apis.v1.sync.send_leave_notification_to_employee"
+	}
+}
 
 # Scheduled Tasks
 # ---------------

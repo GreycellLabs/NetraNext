@@ -2145,28 +2145,108 @@ def get_leave_applications(user_id=None, employee_id=None, status=None):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_leave_types():
+def get_leave_types(user_id=None, employee_id=None):
     try:
         validate_sync_request()
+        
+        user_id = user_id or frappe.form_dict.get("user_id")
+        employee_id = employee_id or frappe.form_dict.get("employee_id")
+
+        if not employee_id and user_id:
+            employee_id = frappe.db.get_value("Employee", {"user_id": user_id}, "name")
+
+        allocated_details = {}
+        lwps = []
+        if employee_id:
+            try:
+                from hrms.hr.doctype.leave_application.leave_application import get_leave_details
+                details = get_leave_details(employee_id, frappe.utils.today())
+                allocated_details = details.get("leave_allocation", {})
+                lwps = details.get("lwps", [])
+            except Exception:
+                pass
+
         if frappe.db.exists("DocType", "Leave Type"):
-            leave_types = frappe.get_all(
+            all_types = frappe.get_all(
                 "Leave Type",
                 filters={"is_active": 1} if frappe.db.has_column("Leave Type", "is_active") else {},
                 fields=["name", "name as leave_type_name", "max_leaves_allowed"]
             )
         else:
-            leave_types = []
+            all_types = []
 
-        if not leave_types:
-            leave_types = [
+        if not all_types:
+            all_types = [
                 {"name": "Casual Leave", "leave_type_name": "Casual Leave"},
                 {"name": "Sick Leave", "leave_type_name": "Sick Leave"},
                 {"name": "Privilege Leave", "leave_type_name": "Privilege Leave"},
                 {"name": "Earned Leave", "leave_type_name": "Earned Leave"},
                 {"name": "Leave Without Pay", "leave_type_name": "Leave Without Pay"}
             ]
+
+        # If employee has allocated leaves, filter and enrich types with balances
+        leave_types = []
+        if allocated_details:
+            allowed_names = set(allocated_details.keys()).union(set(lwps))
+            for t in all_types:
+                t_name = t["name"]
+                if t_name in allowed_names or not allocated_details:
+                    bal = allocated_details.get(t_name, {})
+                    t["total_leaves"] = bal.get("total_leaves", 0.0)
+                    t["leaves_taken"] = bal.get("leaves_taken", 0.0)
+                    t["leaves_pending_approval"] = bal.get("leaves_pending_approval", 0.0)
+                    t["remaining_leaves"] = bal.get("remaining_leaves", 0.0)
+                    leave_types.append(t)
+        else:
+            for t in all_types:
+                t_name = t["name"]
+                t["total_leaves"] = 0.0
+                t["leaves_taken"] = 0.0
+                t["leaves_pending_approval"] = 0.0
+                t["remaining_leaves"] = 0.0
+                leave_types.append(t)
+
         return create_success_response("Leave types fetched successfully", data=leave_types)
     except Exception as e:
         return handle_api_exception(e, "LEAVE_SYNC")
+
+
+def send_leave_notification_to_employee(doc, method=None):
+    """
+    DocEvent hook on tenant bench for Leave Application.
+    When status is Approved or Rejected, sends notification request to central server.
+    """
+    try:
+        if doc.status not in ["Approved", "Rejected"]:
+            return
+
+        if not doc.employee:
+            return
+
+        user_id = frappe.db.get_value("Employee", doc.employee, "user_id") or \
+                  frappe.db.get_value("Employee", doc.employee, "prefered_email") or \
+                  frappe.db.get_value("Employee", doc.employee, "company_email") or \
+                  frappe.db.get_value("Employee", doc.employee, "personal_email")
+
+        if not user_id:
+            return
+
+        # Central server URL & notification dispatcher
+        central_url = frappe.db.get_single_value("NetraNext Settings", "central_server_url") or "https://netranext.m.frappe.cloud"
+        if central_url:
+            import requests
+            endpoint = f"{central_url.rstrip('/')}/api/method/netranext.apis.v1.leave.send_leave_push_notification"
+            payload = {
+                "user_id": user_id,
+                "leave_id": doc.name,
+                "status": doc.status,
+                "leave_type": doc.leave_type,
+                "from_date": str(doc.from_date),
+                "to_date": str(doc.to_date),
+                "reason": getattr(doc, "status_description", "") or getattr(doc, "description", "")
+            }
+            requests.post(endpoint, json=payload, timeout=5)
+    except Exception as e:
+        tenant_bench_logger.error(f"Error in send_leave_notification_to_employee: {e}", "LEAVE_SYNC")
 
 
