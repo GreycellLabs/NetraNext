@@ -1793,6 +1793,7 @@ def get_non_working_days(user_id=None, employee_id=None, from_date=None, to_date
 		return handle_api_exception(e, "EMPLOYEE_SYNC")
 
 
+@frappe.whitelist(allow_guest=True)
 def get_shift_reminders():
     """
     Get shift reminders (check-in/check-out) for active employees
@@ -2116,7 +2117,10 @@ def get_leave_applications(user_id=None, employee_id=None, status=None):
 
         filters = {"employee": employee_id}
         if status and status != "All":
-            filters["status"] = status
+            if status in ["Pending", "Open"]:
+                filters["status"] = ["in", ["Open", "Pending"]]
+            else:
+                filters["status"] = status
 
         applications = frappe.get_all(
             "Leave Application",
