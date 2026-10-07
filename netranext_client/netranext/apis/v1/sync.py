@@ -2094,7 +2094,18 @@ def apply_leave(leave_data=None):
                 "total_leave_days": getattr(leave_doc, "total_leave_days", None) or (frappe.utils.date_diff(to_d, from_d) + 1 if from_d and to_d else 1)
             }
         )
+    except frappe.exceptions.ValidationError as e:
+        msg = str(e)
+        # Strip common Frappe error prefixes like "ValidationError: "
+        if ":" in msg:
+            msg = msg.split(":", 1)[-1].strip()
+        return create_error_response(msg or "Insufficient leave balance or invalid leave application.", status_code=400)
     except Exception as e:
+        # Check if exception message contains leave balance validation errors
+        err_msg = str(e)
+        if "not enough" in err_msg.lower() or "insufficient" in err_msg.lower() or "balance" in err_msg.lower() or "leave" in err_msg.lower():
+            clean_msg = err_msg.split(":", 1)[-1].strip() if ":" in err_msg else err_msg
+            return create_error_response(clean_msg, status_code=400)
         return handle_api_exception(e, "LEAVE_SYNC")
 
 
