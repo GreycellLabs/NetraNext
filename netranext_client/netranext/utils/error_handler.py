@@ -76,7 +76,6 @@ def handle_api_exception(exception: Exception, module: str = "TENANT_BENCH_API")
             error_code=exception.error_code,
             status_code=400
         )
-    else:
     # Handle Frappe validation errors (e.g. Insufficient Leave Balance)
     if isinstance(exception, frappe.exceptions.ValidationError) or "validationerror" in type(exception).__name__.lower():
         msg = str(exception)
