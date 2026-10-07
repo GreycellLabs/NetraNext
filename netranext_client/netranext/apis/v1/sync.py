@@ -2077,6 +2077,7 @@ def apply_leave(leave_data=None):
             "status": "Open",
             "posting_date": frappe.utils.nowdate()
         })
+        leave_doc.flags.ignore_leave_balance_check = True
         leave_doc.insert(ignore_permissions=True)
         frappe.db.commit()
 

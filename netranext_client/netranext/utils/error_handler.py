@@ -77,18 +77,39 @@ def handle_api_exception(exception: Exception, module: str = "TENANT_BENCH_API")
             status_code=400
         )
     else:
-        # Log unexpected exceptions
-        tenant_bench_logger.error(
-            f"Unexpected error: {str(exception)}",
-            module,
-            exc_info=True
+    # Handle Frappe validation errors (e.g. Insufficient Leave Balance)
+    if isinstance(exception, frappe.exceptions.ValidationError) or "validationerror" in type(exception).__name__.lower():
+        msg = str(exception)
+        if ":" in msg:
+            msg = msg.split(":", 1)[-1].strip()
+        return create_error_response(
+            message=msg or "Validation error occurred.",
+            error_code="VALIDATION_ERROR",
+            status_code=400
         )
 
+    # Check if exception message contains leave balance or validation error text
+    err_msg = str(exception)
+    if any(k in err_msg.lower() for k in ["not enough", "insufficient", "balance", "leave", "not permitted"]):
+        clean_msg = err_msg.split(":", 1)[-1].strip() if ":" in err_msg else err_msg
         return create_error_response(
-            message="An unexpected error occurred. Please try again.",
-            error_code="INTERNAL_ERROR",
-            status_code=500
+            message=clean_msg,
+            error_code="VALIDATION_ERROR",
+            status_code=400
         )
+
+    # Log unexpected exceptions
+    tenant_bench_logger.error(
+        f"Unexpected error: {str(exception)}",
+        module,
+        exc_info=True
+    )
+
+    return create_error_response(
+        message="An unexpected error occurred. Please try again.",
+        error_code="INTERNAL_ERROR",
+        status_code=500
+    )
 
 
 def log_and_return_error(message: str, module: str = "TENANT_BENCH_API", status_code: int = 400) -> Dict[str, Any]:
