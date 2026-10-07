@@ -2077,8 +2077,20 @@ def apply_leave(leave_data=None):
             "status": "Open",
             "posting_date": frappe.utils.nowdate()
         })
-        leave_doc.flags.ignore_leave_balance_check = True
-        leave_doc.insert(ignore_permissions=True)
+        # HRMS' Leave Application validation checks frappe.session.user against
+        # the employee's linked user (validate_leave_access), which is Guest for
+        # token-authenticated sync requests — throwing "Not permitted" for
+        # non-LWP types during balance validation. ignore_permissions does not
+        # cover this in-code check. Insert as the employee's linked user so
+        # HRMS validates access against the application's owner, then restore.
+        original_user = frappe.session.user
+        employee_user = frappe.db.get_value("Employee", employee_id, "user_id")
+        try:
+            if employee_user:
+                frappe.set_user(employee_user)
+            leave_doc.insert(ignore_permissions=True)
+        finally:
+            frappe.set_user(original_user)
         frappe.db.commit()
 
         from_d = req_dict.get("from_date")
