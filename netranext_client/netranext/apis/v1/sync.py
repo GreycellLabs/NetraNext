@@ -11,6 +11,7 @@ to communicate with tenant benches for:
 """
 import frappe
 from frappe import _
+from frappe.utils import flt
 import json
 from datetime import datetime
 from netranext_client.netranext.utils.response_formatter import create_success_response, create_error_response
@@ -2144,11 +2145,73 @@ def get_leave_applications(user_id=None, employee_id=None, status=None):
         return handle_api_exception(e, "LEAVE_SYNC")
 
 
+def _get_leave_balances_for_employee(employee_id):
+    """
+    Compute per-leave-type balances for an employee without session-based
+    permission checks (sync requests run as service users that may fail
+    HRMS' validate_leave_access).
+
+    Mirrors hrms...leave_application.get_leave_details using permission-safe
+    helpers, so figures match the ERPNext Leave Balance report exactly.
+    """
+    from hrms.hr.doctype.leave_application.leave_application import (
+        get_leave_allocation_records,
+        get_leaves_for_period,
+        get_leaves_pending_approval_for_period,
+        get_allocation_expiry_for_cf_leaves,
+        get_manually_expired_leaves,
+        get_remaining_leaves,
+    )
+
+    today = frappe.utils.today()
+    allocation_records = get_leave_allocation_records(employee_id, today)
+    leave_allocation = {}
+
+    for leave_type, allocation in allocation_records.items():
+        # consider leaves taken across the whole allocation period
+        end_date = allocation.to_date
+        # ledger value is negative for consumed leaves
+        leaves_taken_neg = get_leaves_for_period(employee_id, leave_type, allocation.from_date, end_date)
+        leaves_taken = leaves_taken_neg * -1
+        leaves_pending = get_leaves_pending_approval_for_period(
+            employee_id, leave_type, allocation.from_date, end_date
+        )
+        cf_expiry = get_allocation_expiry_for_cf_leaves(
+            employee_id, leave_type, end_date, allocation.from_date
+        )
+        manually_expired_leaves = get_manually_expired_leaves(
+            employee_id, leave_type, allocation.from_date, end_date
+        )
+        remaining = get_remaining_leaves(
+            allocation, leaves_taken_neg, today, cf_expiry, manually_expired_leaves,
+        )
+        remaining_leaves = remaining.get("leave_balance", 0.0) if isinstance(remaining, dict) else remaining
+
+        # balance actually available for a new application = remaining - pending
+        available = max(remaining_leaves - leaves_pending, 0.0)
+
+        leave_allocation[leave_type] = {
+            "total_leaves": flt(allocation.total_leaves_allocated),
+            "leaves_taken": flt(leaves_taken),
+            "leaves_pending_approval": flt(leaves_pending),
+            "remaining_leaves": flt(available),
+            "actual_balance": flt(remaining_leaves),
+        }
+
+    return leave_allocation
+
+
 @frappe.whitelist(allow_guest=True)
 def get_leave_types(user_id=None, employee_id=None):
+    """
+    Get leave types explicitly ALLOCATED to the employee with real-time
+    balances, plus active Leave Without Pay (LWP) types.
+
+    Strictly excludes leave types the employee has no allocation for.
+    """
     try:
         validate_sync_request()
-        
+
         user_id = user_id or frappe.form_dict.get("user_id")
         employee_id = employee_id or frappe.form_dict.get("employee_id")
 
@@ -2158,56 +2221,46 @@ def get_leave_types(user_id=None, employee_id=None):
                           frappe.db.get_value("Employee", {"company_email": user_id}, "name") or \
                           frappe.db.get_value("Employee", {"personal_email": user_id}, "name")
 
-        allocated_details = {}
-        lwps = []
-        if employee_id:
-            try:
-                from hrms.hr.doctype.leave_application.leave_application import get_leave_details
-                details = get_leave_details(employee_id, frappe.utils.today())
-                allocated_details = details.get("leave_allocation", {})
-                lwps = details.get("lwps", [])
-            except Exception:
-                pass
+        if not employee_id:
+            return create_error_response("No Employee record linked to your user account")
 
-        if frappe.db.exists("DocType", "Leave Type"):
-            all_types = frappe.get_all(
-                "Leave Type",
-                filters={"is_active": 1} if frappe.db.has_column("Leave Type", "is_active") else {},
-                fields=["name", "name as leave_type_name", "max_leaves_allowed"]
-            )
-        else:
-            all_types = []
+        allocated_details = _get_leave_balances_for_employee(employee_id)
 
-        if not all_types:
-            all_types = [
-                {"name": "Casual Leave", "leave_type_name": "Casual Leave"},
-                {"name": "Sick Leave", "leave_type_name": "Sick Leave"},
-                {"name": "Privilege Leave", "leave_type_name": "Privilege Leave"},
-                {"name": "Earned Leave", "leave_type_name": "Earned Leave"},
-                {"name": "Leave Without Pay", "leave_type_name": "Leave Without Pay"}
-            ]
+        if not frappe.db.exists("DocType", "Leave Type"):
+            return create_success_response("Leave types fetched successfully", data=[])
 
-        # If employee has allocated leaves, filter down to ONLY allocated leave types (+ LWPs)
+        lwp_filters = {"is_lwp": 1}
+        if frappe.db.has_column("Leave Type", "is_active"):
+            lwp_filters["is_active"] = 1
+        lwp_names = frappe.get_all("Leave Type", filters=lwp_filters, pluck="name")
+
         leave_types = []
-        if allocated_details:
-            allowed_names = set(allocated_details.keys()).union(set(lwps))
-            for t in all_types:
-                t_name = t["name"]
-                if t_name in allowed_names:
-                    bal = allocated_details.get(t_name, {})
-                    t["total_leaves"] = bal.get("total_leaves", 0.0)
-                    t["leaves_taken"] = bal.get("leaves_taken", 0.0)
-                    t["leaves_pending_approval"] = bal.get("leaves_pending_approval", 0.0)
-                    t["remaining_leaves"] = bal.get("remaining_leaves", 0.0)
-                    leave_types.append(t)
-        else:
-            for t in all_types:
-                t_name = t["name"]
-                t["total_leaves"] = 0.0
-                t["leaves_taken"] = 0.0
-                t["leaves_pending_approval"] = 0.0
-                t["remaining_leaves"] = 0.0
-                leave_types.append(t)
+        # Only allocated leave types (sorted for a stable UI order)
+        for leave_type in sorted(allocated_details.keys()):
+            bal = allocated_details[leave_type]
+            leave_types.append({
+                "name": leave_type,
+                "leave_type_name": leave_type,
+                "is_lwp": 0,
+                "total_leaves": bal["total_leaves"],
+                "leaves_taken": bal["leaves_taken"],
+                "leaves_pending_approval": bal["leaves_pending_approval"],
+                "remaining_leaves": bal["remaining_leaves"],
+            })
+
+        # LWP types are always applicable even without allocation
+        for leave_type in sorted(lwp_names):
+            if leave_type in allocated_details:
+                continue
+            leave_types.append({
+                "name": leave_type,
+                "leave_type_name": leave_type,
+                "is_lwp": 1,
+                "total_leaves": 0.0,
+                "leaves_taken": 0.0,
+                "leaves_pending_approval": 0.0,
+                "remaining_leaves": 0.0,
+            })
 
         return create_success_response("Leave types fetched successfully", data=leave_types)
     except Exception as e:
@@ -2217,9 +2270,14 @@ def get_leave_types(user_id=None, employee_id=None):
 def send_leave_notification_to_employee(doc, method=None):
     """
     DocEvent hook on tenant bench for Leave Application.
-    When status is Approved or Rejected, sends notification request to central server.
+    Triggers ONLY on submit or cancel (docstatus 1 or 2) when status is Approved or Rejected.
+    Ignored when document is Draft (docstatus 0).
     """
     try:
+        # Ignore draft leaves (docstatus == 0)
+        if doc.docstatus == 0:
+            return
+
         if doc.status not in ["Approved", "Rejected"]:
             return
 

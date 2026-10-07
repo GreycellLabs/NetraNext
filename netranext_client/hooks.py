@@ -188,9 +188,8 @@ pages_dict = {
 
 doc_events = {
 	"Leave Application": {
-		"on_update": "netranext_client.netranext.apis.v1.sync.send_leave_notification_to_employee",
 		"on_submit": "netranext_client.netranext.apis.v1.sync.send_leave_notification_to_employee",
-		"on_change": "netranext_client.netranext.apis.v1.sync.send_leave_notification_to_employee"
+		"on_cancel": "netranext_client.netranext.apis.v1.sync.send_leave_notification_to_employee"
 	}
 }
 
