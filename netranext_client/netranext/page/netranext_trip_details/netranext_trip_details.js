@@ -563,6 +563,14 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
 
         function formatTimeOnly(ts) {
             if (!ts || ts === 'N/A' || ts === 'In Progress') return ts || '';
+            try {
+                var d = new Date(ts);
+                if (!isNaN(d.getTime())) {
+                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                }
+            } catch (e) {
+                console.error("Error formatting local time:", e);
+            }
             var str = String(ts).trim();
             if (str.includes(' ')) {
                 return str.split(' ')[1];
