@@ -580,6 +580,17 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                         parseInt(timeParts[1]),
                         parseInt(timeParts[2] || 0)
                     );
+                } else if (str.includes(':')) {
+                    var today = new Date();
+                    var timeParts = str.split(':');
+                    d = new Date(
+                        today.getFullYear(),
+                        today.getMonth(),
+                        today.getDate(),
+                        parseInt(timeParts[0]),
+                        parseInt(timeParts[1]),
+                        parseInt(timeParts[2] || 0)
+                    );
                 } else {
                     d = new Date(str);
                 }
@@ -587,10 +598,12 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                 if (!isNaN(d.getTime())) {
                     var hours = d.getHours();
                     var minutes = d.getMinutes();
-                    var seconds = d.getSeconds();
-                    return (hours < 10 ? '0' : '') + hours + ':' +
-                           (minutes < 10 ? '0' : '') + minutes + ':' +
-                           (seconds < 10 ? '0' : '') + seconds;
+                    var ampm = hours >= 12 ? 'PM' : 'AM';
+                    hours = hours % 12;
+                    hours = hours ? hours : 12;
+                    var hoursStr = hours < 10 ? '0' + hours : hours;
+                    var minutesStr = minutes < 10 ? '0' + minutes : minutes;
+                    return hoursStr + ':' + minutesStr + ' ' + ampm;
                 }
             } catch (e) {
                 console.error("Error formatting local time:", e);
