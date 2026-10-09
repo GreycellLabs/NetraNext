@@ -307,6 +307,8 @@ api_whitelisted_methods = [
     "netranext_client.netranext.apis.v1.sync.get_upcoming_shift_reminders",
     "netranext_client.netranext.apis.v1.sync.validate_shift_reminder",
     "netranext_client.netranext.apis.v1.sync.validate_trip_reminder",
+    "netranext_client.netranext.apis.v1.quick_login.create_quick_login_token",
+    "netranext_client.netranext.apis.v1.quick_login.redeem_quick_login_token",
 ]
 
 # Custom Fields
