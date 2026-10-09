@@ -563,15 +563,39 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
 
         function formatTimeOnly(ts) {
             if (!ts || ts === 'N/A' || ts === 'In Progress') return ts || '';
+            var str = String(ts).trim();
+
             try {
-                var d = new Date(ts);
+                var d;
+                if (str.includes('-') && (str.includes(':') || str.includes('T'))) {
+                    var formattedStr = str.replace('T', ' ').replace('Z', '');
+                    var parts = formattedStr.split(' ');
+                    var dateParts = parts[0].split('-');
+                    var timeParts = parts[1].split(':');
+                    d = new Date(
+                        parseInt(dateParts[0]),
+                        parseInt(dateParts[1]) - 1,
+                        parseInt(dateParts[2]),
+                        parseInt(timeParts[0]),
+                        parseInt(timeParts[1]),
+                        parseInt(timeParts[2] || 0)
+                    );
+                } else {
+                    d = new Date(str);
+                }
+
                 if (!isNaN(d.getTime())) {
-                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                    var hours = d.getHours();
+                    var minutes = d.getMinutes();
+                    var seconds = d.getSeconds();
+                    return (hours < 10 ? '0' : '') + hours + ':' +
+                           (minutes < 10 ? '0' : '') + minutes + ':' +
+                           (seconds < 10 ? '0' : '') + seconds;
                 }
             } catch (e) {
                 console.error("Error formatting local time:", e);
             }
-            var str = String(ts).trim();
+
             if (str.includes(' ')) {
                 return str.split(' ')[1];
             } else if (str.includes('T')) {
