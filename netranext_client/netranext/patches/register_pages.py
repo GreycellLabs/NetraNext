@@ -73,7 +73,7 @@ def execute():
     # which the sidebar silently swallows). Without "All" on the pages, users
     # holding no HR/Employee role lose the whole workspace after login.
     # Keep this list in sync with the page JSON files (they also ship "All").
-    roles_to_assign = ["System Manager", "HR Manager", "HR User", "All"]
+    roles_to_assign = ["System Manager", "HR Manager", "HR User", "Employee", "All"]
 
     for page_data in netranext_pages:
         page_name = page_data["name"]

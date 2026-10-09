@@ -1,0 +1,36 @@
+{
+ "content": null,
+ "creation": "2026-10-09 13:49:22.740601",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "fa-money",
+ "idx": 0,
+ "modified": "2026-10-09 13:49:22.740601",
+ "modified_by": "Administrator",
+ "module": "NetraNext",
+ "name": "netranext-expense-cl-2",
+ "owner": "Administrator",
+ "page_name": "netranext-expense-cl-2",
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "HR Manager"
+  },
+  {
+   "role": "HR User"
+  },
+  {
+   "role": "Employee"
+  },
+  {
+   "role": "All"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 1,
+ "title": "Expense Claim List"
+}
