@@ -138,11 +138,67 @@ def execute():
         ws_doc.roles = []
         for role in roles_to_assign:
             ws_doc.append("roles", {"role": role})
+
+        # Ensure content JSON contains Card blocks so canvas renders cards properly
+        if not ws_doc.content or ws_doc.content == "[]":
+            import json
+            ws_content = [
+                {"type": "header", "data": {"text": "<span class=\"h4\"><b>NetraNext</b></span>", "col": 12}},
+                {"type": "card", "data": {"card_name": "Trips", "col": 4}},
+                {"type": "card", "data": {"card_name": "Approvals", "col": 4}},
+                {"type": "card", "data": {"card_name": "Setting", "col": 4}},
+                {"type": "shortcut", "data": {"shortcut_name": "Dashboard", "col": 3}},
+                {"type": "shortcut", "data": {"shortcut_name": "Live Tracking", "col": 3}},
+                {"type": "shortcut", "data": {"shortcut_name": "Trip History", "col": 3}},
+                {"type": "shortcut", "data": {"shortcut_name": "Approvals", "col": 3}},
+            ]
+            ws_doc.content = json.dumps(ws_content)
+
         ws_doc.save(ignore_permissions=True)
         frappe.db.commit()
-        print(f"✅ Updated workspace permissions and sequence for: {workspace_name}")
+        print(f"✅ Updated workspace permissions, sequence, and content layout for: {workspace_name}")
     else:
         print(f"⚠️ Workspace {workspace_name} not found in DB, standard import will create it on migrate.")
+
+    # Register/Update NetraNext Workspace Sidebar (for Frappe v15/v16 sidebar navigation tree)
+    sidebar_items = [
+        {"label": "Dashboard", "type": "Link", "link_type": "Page", "link_to": "netranext-dashboard", "icon": "dashboard-list", "child_item": 0},
+        {"label": "Live tracking Map", "type": "Link", "link_type": "Page", "link_to": "netranext-live-tracking", "icon": "map-pin", "child_item": 0},
+        {"label": "Trips", "type": "Section Break", "icon": "scroll-text", "child_item": 0},
+        {"label": "Scheduled Trips", "type": "Link", "link_type": "DocType", "link_to": "Scheduled Trip", "icon": "timer", "child_item": 1},
+        {"label": "Trip History", "type": "Link", "link_type": "Page", "link_to": "netranext-trip-history", "icon": "history", "child_item": 1},
+        {"label": "Trip Details", "type": "Link", "link_type": "Page", "link_to": "netranext-trip-details", "icon": "map", "child_item": 1},
+        {"label": "Approvals", "type": "Section Break", "icon": "scroll-text", "child_item": 0},
+        {"label": "Location Checkin Approvals", "type": "Link", "link_type": "DocType", "link_to": "NetraNext Location Checkin Approval", "icon": "map-pin-check", "child_item": 1},
+        {"label": "Face Registration Request", "type": "Link", "link_type": "DocType", "link_to": "NetraNext Face Registration Request", "icon": "scan-face", "child_item": 1},
+        {"label": "Setting", "type": "Section Break", "icon": "scroll-text", "child_item": 0},
+        {"label": "NetraNext Settings", "type": "Link", "link_type": "DocType", "link_to": "NetraNext Settings", "icon": "gear", "child_item": 1},
+        {"label": "User Mappings", "type": "Link", "link_type": "DocType", "link_to": "NetraNext User Mapping", "icon": "users", "child_item": 1},
+    ]
+
+    if frappe.db.exists("DocType", "Workspace Sidebar"):
+        try:
+            if frappe.db.exists("Workspace Sidebar", workspace_name):
+                sidebar_doc = frappe.get_doc("Workspace Sidebar", workspace_name)
+                sidebar_doc.header_icon = "grid"
+                sidebar_doc.items = []
+                for item in sidebar_items:
+                    sidebar_doc.append("items", item)
+                sidebar_doc.save(ignore_permissions=True)
+                frappe.db.commit()
+                print(f"✅ Synced Workspace Sidebar items for: {workspace_name}")
+            else:
+                sidebar_doc = frappe.get_doc({
+                    "doctype": "Workspace Sidebar",
+                    "name": workspace_name,
+                    "header_icon": "grid",
+                    "items": sidebar_items
+                })
+                sidebar_doc.insert(ignore_permissions=True)
+                frappe.db.commit()
+                print(f"✅ Created Workspace Sidebar for: {workspace_name}")
+        except Exception as e:
+            print(f"⚠️ Could not sync Workspace Sidebar: {e}")
 
     # Ensure Installed Application record exists with has_setup_wizard=0 so non-System Managers see NetraNext on Desk
     if frappe.db.exists("Installed Application", "netranext_client"):
