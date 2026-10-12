@@ -223,7 +223,28 @@ def execute():
     except Exception as e:
         print(f"⚠️ Could not update Installed Applications: {e}")
 
+    # Ensure DocPerm on Scheduled Trip grants read permission to 'All' role
+    # This guarantees that the NetraNext module is recognized in user.allow_modules
+    try:
+        if frappe.db.exists("DocType", "Scheduled Trip"):
+            has_all_perm = frappe.db.exists("DocPerm", {"parent": "Scheduled Trip", "role": "All", "read": 1})
+            if not has_all_perm:
+                st_doc = frappe.get_doc("DocType", "Scheduled Trip")
+                st_doc.append("permissions", {
+                    "role": "All",
+                    "read": 1,
+                    "export": 1,
+                    "print": 1,
+                    "email": 1,
+                })
+                st_doc.save(ignore_permissions=True)
+                frappe.db.commit()
+                print("✅ Added 'All' read permission to Scheduled Trip DocType")
+    except Exception as e:
+        print(f"⚠️ Could not update DocPerm for Scheduled Trip: {e}")
+
     # Ensure NetraNext is not blocked in 'block_modules' for all active users
+    # and ensure active System Users have the 'Workspace Manager' role
     users_updated = 0
     all_users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
     for user_email in all_users:
@@ -237,9 +258,18 @@ def execute():
                 user_doc.block_modules = [m for m in user_doc.block_modules if m.module != "NetraNext"]
                 if len(user_doc.block_modules) != orig_len:
                     modified = True
-            if user_doc.user_type == "System User" and not user_doc.default_workspace:
-                user_doc.default_workspace = "NetraNext"
-                modified = True
+
+            if user_doc.user_type == "System User":
+                if not user_doc.default_workspace:
+                    user_doc.default_workspace = "NetraNext"
+                    modified = True
+
+                # Ensure user has 'Workspace Manager' role so Frappe Desk sidebar and /desk apps never hide NetraNext
+                has_wm = any(r.role == "Workspace Manager" for r in user_doc.roles)
+                if not has_wm:
+                    user_doc.append("roles", {"role": "Workspace Manager"})
+                    modified = True
+
             if modified:
                 user_doc.save(ignore_permissions=True)
                 users_updated += 1
@@ -248,4 +278,5 @@ def execute():
             pass
     frappe.clear_cache()
     print("🚀 NetraNext pages and workspace registration completed!")
+
 
