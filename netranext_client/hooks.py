@@ -132,7 +132,7 @@ pages_dict = {
 # ------------
 
 # before_install = "netranext_client.install.before_install"
-# after_install = "netranext_client.install.after_install"
+after_install = "netranext_client.netranext.patches.register_pages.execute"
 
 # Uninstallation
 # ------------
