@@ -243,6 +243,7 @@ def execute():
             if modified:
                 user_doc.save(ignore_permissions=True)
                 users_updated += 1
+            frappe.clear_cache(user=user_email)
         except Exception:
             pass
     frappe.clear_cache()
