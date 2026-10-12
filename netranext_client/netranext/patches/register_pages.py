@@ -140,19 +140,18 @@ def execute():
             ws_doc.append("roles", {"role": role})
 
         # Ensure content JSON contains Card blocks so canvas renders cards properly
-        if not ws_doc.content or ws_doc.content == "[]":
-            import json
-            ws_content = [
-                {"type": "header", "data": {"text": "<span class=\"h4\"><b>NetraNext</b></span>", "col": 12}},
-                {"type": "card", "data": {"card_name": "Trips", "col": 4}},
-                {"type": "card", "data": {"card_name": "Approvals", "col": 4}},
-                {"type": "card", "data": {"card_name": "Setting", "col": 4}},
-                {"type": "shortcut", "data": {"shortcut_name": "Dashboard", "col": 3}},
-                {"type": "shortcut", "data": {"shortcut_name": "Live Tracking", "col": 3}},
-                {"type": "shortcut", "data": {"shortcut_name": "Trip History", "col": 3}},
-                {"type": "shortcut", "data": {"shortcut_name": "Approvals", "col": 3}},
-            ]
-            ws_doc.content = json.dumps(ws_content)
+        import json
+        ws_content = [
+            {"type": "header", "data": {"text": "<span class=\"h4\"><b>NetraNext</b></span>", "col": 12}},
+            {"type": "card", "data": {"card_name": "Trips", "col": 4}},
+            {"type": "card", "data": {"card_name": "Approvals", "col": 4}},
+            {"type": "card", "data": {"card_name": "Setting", "col": 4}},
+            {"type": "shortcut", "data": {"shortcut_name": "Dashboard", "col": 3}},
+            {"type": "shortcut", "data": {"shortcut_name": "Live Tracking", "col": 3}},
+            {"type": "shortcut", "data": {"shortcut_name": "Trip History", "col": 3}},
+            {"type": "shortcut", "data": {"shortcut_name": "Approvals", "col": 3}},
+        ]
+        ws_doc.content = json.dumps(ws_content)
 
         ws_doc.save(ignore_permissions=True)
         frappe.db.commit()
@@ -171,8 +170,8 @@ def execute():
         {"label": "Approvals", "type": "Section Break", "icon": "scroll-text", "child_item": 0},
         {"label": "Location Checkin Approvals", "type": "Link", "link_type": "DocType", "link_to": "NetraNext Location Checkin Approval", "icon": "map-pin-check", "child_item": 1},
         {"label": "Face Registration Request", "type": "Link", "link_type": "DocType", "link_to": "NetraNext Face Registration Request", "icon": "scan-face", "child_item": 1},
-        {"label": "Setting", "type": "Section Break", "icon": "scroll-text", "child_item": 0},
-        {"label": "NetraNext Settings", "type": "Link", "link_type": "DocType", "link_to": "NetraNext Settings", "icon": "gear", "child_item": 1},
+        {"label": "Setting", "type": "Section Break", "icon": "settings", "child_item": 0},
+        {"label": "NetraNext Settings", "type": "Link", "link_type": "DocType", "link_to": "NetraNext Settings", "icon": "settings", "child_item": 1},
         {"label": "User Mappings", "type": "Link", "link_type": "DocType", "link_to": "NetraNext User Mapping", "icon": "users", "child_item": 1},
     ]
 
