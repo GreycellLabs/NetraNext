@@ -220,18 +220,28 @@ def execute():
         except Exception:
             pass
 
-    # Set NetraNext as default_workspace for active System Users if unset
+    # Ensure NetraNext is not blocked in 'block_modules' for all active users
     users_updated = 0
-    system_users = frappe.get_all("User", filters={"user_type": "System User", "enabled": 1}, pluck="name")
-    for user_email in system_users:
-        user_doc = frappe.get_doc("User", user_email)
-        # Ensure NetraNext is not in block_modules
-        if hasattr(user_doc, "block_modules") and user_doc.block_modules:
-            user_doc.block_modules = [m for m in user_doc.block_modules if m.module != "NetraNext"]
-        if not user_doc.default_workspace:
-            user_doc.default_workspace = "NetraNext"
-            users_updated += 1
-        user_doc.save(ignore_permissions=True)
+    all_users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
+    for user_email in all_users:
+        if user_email in ("Guest",):
+            continue
+        try:
+            user_doc = frappe.get_doc("User", user_email)
+            modified = False
+            if hasattr(user_doc, "block_modules") and user_doc.block_modules:
+                orig_len = len(user_doc.block_modules)
+                user_doc.block_modules = [m for m in user_doc.block_modules if m.module != "NetraNext"]
+                if len(user_doc.block_modules) != orig_len:
+                    modified = True
+            if user_doc.user_type == "System User" and not user_doc.default_workspace:
+                user_doc.default_workspace = "NetraNext"
+                modified = True
+            if modified:
+                user_doc.save(ignore_permissions=True)
+                users_updated += 1
+        except Exception:
+            pass
     frappe.clear_cache()
     print("🚀 NetraNext pages and workspace registration completed!")
 
