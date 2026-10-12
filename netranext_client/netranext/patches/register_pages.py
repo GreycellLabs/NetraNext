@@ -199,25 +199,29 @@ def execute():
         except Exception as e:
             print(f"⚠️ Could not sync Workspace Sidebar: {e}")
 
-    # Ensure Installed Application record exists with has_setup_wizard=0 so non-System Managers see NetraNext on Desk
-    if frappe.db.exists("Installed Application", "netranext_client"):
-        frappe.db.set_value("Installed Application", "netranext_client", {
-            "has_setup_wizard": 0,
-            "is_setup_complete": 1
-        })
-        frappe.db.commit()
-    else:
-        try:
-            frappe.get_doc({
-                "doctype": "Installed Application",
+    # Ensure 'Installed Applications' single document includes netranext_client with has_setup_wizard=0
+    try:
+        ia_doc = frappe.get_doc("Installed Applications")
+        found = False
+        for row in ia_doc.installed_applications:
+            if row.app_name == "netranext_client":
+                row.has_setup_wizard = 0
+                row.is_setup_complete = 1
+                found = True
+                break
+        if not found:
+            ia_doc.append("installed_applications", {
                 "app_name": "netranext_client",
-                "app_title": "NetraNext Client",
+                "app_version": "1.0.0",
+                "git_branch": "master",
                 "has_setup_wizard": 0,
-                "is_setup_complete": 1
-            }).insert(ignore_permissions=True)
-            frappe.db.commit()
-        except Exception:
-            pass
+                "is_setup_complete": 1,
+            })
+        ia_doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        print("✅ Registered netranext_client in Installed Applications single doc")
+    except Exception as e:
+        print(f"⚠️ Could not update Installed Applications: {e}")
 
     # Ensure NetraNext is not blocked in 'block_modules' for all active users
     users_updated = 0
