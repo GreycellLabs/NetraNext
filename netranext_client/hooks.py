@@ -79,6 +79,12 @@ extend_bootinfo = [
     "netranext_client.netranext.boot.boot_session"
 ]
 
+# Purge per-user permission caches on every login so stale module lists
+# (built before a migrate/role change) never hide the NetraNext workspace.
+on_session_creation = [
+    "netranext_client.netranext.boot.on_session_creation"
+]
+
 # Page routes and icons
 pages_dict = {
     "netranext-dashboard": {
