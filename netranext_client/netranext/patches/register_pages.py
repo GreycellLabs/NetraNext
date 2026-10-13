@@ -78,6 +78,24 @@ def execute():
     for page_data in netranext_pages:
         page_name = page_data["name"]
 
+        # Remove duplicate truncated pages created by earlier runs of this
+        # patch. Page.autoname() truncates names to 20 chars, so inserts of
+        # longer names became "netranext-expense-cl", "-1", "-2", ... while
+        # the workspace shortcut still links to the full name (which then
+        # never resolved and the shortcut was silently filtered out).
+        if page_name.startswith("netranext-expense"):
+            for dup in frappe.get_all(
+                "Page", filters={"name": ["like", "netranext-expense-cl%"]}, pluck="name"
+            ):
+                if dup == page_name:
+                    continue
+                try:
+                    frappe.delete_doc("Page", dup, ignore_permissions=True, force=True)
+                    frappe.db.commit()
+                    print(f"🧹 Deleted duplicate page: {dup}")
+                except Exception as e:
+                    print(f"⚠️ Could not delete duplicate page {dup}: {e}")
+
         # Check if page exists
         if frappe.db.exists("Page", page_name):
             # Update existing page
@@ -123,6 +141,14 @@ def execute():
             finally:
                 frappe.conf.developer_mode = orig_dev_mode
             frappe.db.commit()
+
+            # frappe.model.naming.set_new_name discards an explicitly set name
+            # and Page.autoname() truncates to 20 chars, so long page names
+            # never survive insert. Rename to the intended name so workspace
+            # links resolve.
+            if page_doc.name != page_name:
+                frappe.rename_doc("Page", page_doc.name, page_name, force=True)
+                frappe.db.commit()
 
             print(f"✅ Created page: {page_name}")
 
@@ -237,14 +263,24 @@ def execute():
                     "print": 1,
                     "email": 1,
                 })
-                st_doc.save(ignore_permissions=True)
+                # Saving a standard DocType requires developer mode; enable it
+                # only for the duration of this save.
+                orig_dev_mode = getattr(frappe.conf, "developer_mode", 0)
+                frappe.conf.developer_mode = 1
+                try:
+                    st_doc.save(ignore_permissions=True)
+                finally:
+                    frappe.conf.developer_mode = orig_dev_mode
                 frappe.db.commit()
                 print("✅ Added 'All' read permission to Scheduled Trip DocType")
     except Exception as e:
         print(f"⚠️ Could not update DocPerm for Scheduled Trip: {e}")
 
-    # Ensure NetraNext is not blocked in 'block_modules' for all active users
-    # and ensure active System Users have the 'Workspace Manager' role
+    # Ensure NetraNext is not blocked in 'block_modules' for all active users.
+    # NOTE: no 'Workspace Manager' role is granted here. App card + workspace
+    # visibility are guaranteed by (a) has_setup_wizard=0 in Installed
+    # Applications, (b) 'All' read on Scheduled Trip / module pages, and
+    # (c) the on_session_creation cache purge in netranext.boot.
     users_updated = 0
     all_users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
     for user_email in all_users:
@@ -262,12 +298,6 @@ def execute():
             if user_doc.user_type == "System User":
                 if not user_doc.default_workspace:
                     user_doc.default_workspace = "NetraNext"
-                    modified = True
-
-                # Ensure user has 'Workspace Manager' role so Frappe Desk sidebar and /desk apps never hide NetraNext
-                has_wm = any(r.role == "Workspace Manager" for r in user_doc.roles)
-                if not has_wm:
-                    user_doc.append("roles", {"role": "Workspace Manager"})
                     modified = True
 
             if modified:

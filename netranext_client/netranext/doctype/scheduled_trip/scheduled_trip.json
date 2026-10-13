@@ -22,18 +22,18 @@
   {
    "fieldname": "employee",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Employee",
    "options": "Employee",
-   "reqd": 1,
-   "in_list_view": 1
+   "reqd": 1
   },
   {
+   "default": "Scheduled",
    "fieldname": "status",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Status",
-   "options": "Scheduled\nIn Progress\nCompleted\nCancelled",
-   "default": "Scheduled",
-   "in_list_view": 1
+   "options": "Scheduled\nIn Progress\nCompleted\nCancelled"
   },
   {
    "fieldname": "column_break_0",
@@ -42,10 +42,10 @@
   {
    "fieldname": "destination_address",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Destination Address",
    "options": "Address",
-   "reqd": 1,
-   "in_list_view": 1
+   "reqd": 1
   },
   {
    "fieldname": "section_break_0",
@@ -54,9 +54,9 @@
   {
    "fieldname": "scheduled_start_time",
    "fieldtype": "Datetime",
+   "in_list_view": 1,
    "label": "Scheduled Start Time",
-   "reqd": 1,
-   "in_list_view": 1
+   "reqd": 1
   },
   {
    "fieldname": "scheduled_end_time",
@@ -76,15 +76,13 @@
    "read_only": 1
   }
  ],
- "hide_toolbar": 0,
  "icon": "icon-calendar",
- "idx": 0,
- "is_submittable": 0,
- "modified": "2026-01-01 00:00:00",
+ "links": [],
+ "modified": "2026-10-13 13:01:11.945308",
  "modified_by": "Administrator",
  "module": "NetraNext",
  "name": "Scheduled Trip",
- "naming_rule": "Expression",
+ "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [
   {
@@ -101,19 +99,28 @@
   },
   {
    "create": 1,
-   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Employee",
-   "share": 0,
-   "write": 0
+   "role": "Employee"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "share": 1,
+   "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": [],
- "controller": "netranext.doctype.scheduled_trip.scheduled_trip"
+ "states": []
 }
