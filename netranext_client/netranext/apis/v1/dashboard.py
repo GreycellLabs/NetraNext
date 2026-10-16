@@ -8,7 +8,7 @@ from datetime import datetime
 @frappe.whitelist(allow_guest=True)
 def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100,
                      journey_page=1, journey_employee=None, attendance_page=1, attendance_employee=None,
-                     ignore_dates=None):
+                     ignore_dates=None, status=None, user_id=None):
     """
     Fetch dashboard data from local database
     """
@@ -75,39 +75,51 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
         journeys = []
         try:
             if frappe.db.exists("DocType", "NetraNext Journey"):
-                if is_ignore_dates:
-                    # Query all journeys without date filter
-                    journey_sql = """
-                        SELECT name, employee, start_time as journey_date, start_time, end_time,
-                               start_location, end_location, distance_km as total_distance, status,
-                               raw_gps_data, modified
-                        FROM `tabNetraNext Journey`
-                        ORDER BY creation DESC
-                        LIMIT %s
-                    """
-                    journey_records = frappe.db.sql(journey_sql, (int(limit),), as_dict=True)
-                else:
-                    # Use frappe.db.sql instead of get_all to avoid syntax issues
-                    journey_sql = """
-                        SELECT name, employee, start_time as journey_date, start_time, end_time,
-                               start_location, end_location, distance_km as total_distance, status,
-                               raw_gps_data, modified
-                        FROM `tabNetraNext Journey`
-                        WHERE DATE(start_time) >= %s AND DATE(start_time) <= %s
-                        ORDER BY creation DESC
-                        LIMIT %s
-                    """
-                    journey_records = frappe.db.sql(journey_sql, (db_date_from, db_date_to, int(limit)), as_dict=True)
+                conditions = []
+                params = []
+                if not is_ignore_dates:
+                    conditions.append("DATE(start_time) >= %s AND DATE(start_time) <= %s")
+                    params.extend([db_date_from, db_date_to])
+                if status:
+                    conditions.append("status = %s")
+                    params.append(status)
+                if user_id:
+                    conditions.append(
+                        "(user_id = %s OR employee IN (SELECT name FROM `tabEmployee` WHERE user_id = %s))"
+                    )
+                    params.extend([user_id, user_id])
+
+                where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+                journey_sql = f"""
+                    SELECT name, employee, user_id, start_time as journey_date, start_time, end_time,
+                           start_location, end_location, distance_km as total_distance, status,
+                           raw_gps_data, modified
+                    FROM `tabNetraNext Journey`
+                    {where_sql}
+                    ORDER BY creation DESC
+                    LIMIT %s
+                """
+                params.append(int(limit))
+                journey_records = frappe.db.sql(journey_sql, tuple(params), as_dict=True)
                 
                 import json
                 for journey in journey_records:
-                    # Get employee name
+                    # Get employee name, linked user, and department
                     employee_name = journey.employee
+                    department = None
+                    linked_user_id = journey.get("user_id")
                     try:
                         employee_doc = frappe.get_doc("Employee", journey.employee)
                         employee_name = employee_doc.employee_name
+                        department = employee_doc.get("department")
+                        if not linked_user_id:
+                            linked_user_id = employee_doc.get("user_id")
                     except Exception:
                         pass
+
+                    user_name = employee_name
+                    if linked_user_id:
+                        user_name = frappe.db.get_value("User", linked_user_id, "full_name") or linked_user_id
 
                     raw_coords = []
                     if journey.raw_gps_data:
@@ -158,6 +170,9 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                         "name": journey.name,
                         "employee": journey.employee,
                         "employee_name": employee_name,
+                        "user_id": linked_user_id,
+                        "user_name": user_name,
+                        "department": department,
                         "start_time": journey.start_time.isoformat() + "Z" if hasattr(journey.start_time, "isoformat") else (str(journey.start_time) if journey.start_time else ""),
                         "end_time": journey.end_time.isoformat() + "Z" if hasattr(journey.end_time, "isoformat") else (str(journey.end_time) if journey.end_time else ""),
                         "start_location": journey.start_location or "Unknown",
@@ -248,6 +263,24 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
             # If employee query fails, continue with empty list
             pass
 
+        all_users = []
+        try:
+            user_records = frappe.get_all(
+                "User",
+                filters={"enabled": 1, "user_type": "System User"},
+                fields=["name", "full_name"],
+                order_by="full_name asc",
+                limit=200,
+                ignore_permissions=True,
+            )
+            for user in user_records:
+                all_users.append({
+                    "name": user.name,
+                    "full_name": user.full_name or user.name,
+                })
+        except Exception:
+            pass
+
         # Build response with REAL data
         has_data = len(journeys) > 0 or len(attendance) > 0 or total_employees > 0
 
@@ -268,6 +301,7 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                     "present_today": present_today
                 },
                 "all_employees": all_employees,
+                "all_users": all_users,
                 "total_journeys": len(journeys),
                 "total_attendance": len(attendance)
             }

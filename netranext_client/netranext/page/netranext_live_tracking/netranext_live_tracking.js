@@ -14,12 +14,13 @@
     };
 
     var currentFilters = {
-        employee: '',
+        user: '',
         search: '',
         status: '',
-        department: '',
-        date: ''
+        department: ''
     };
+
+    var availableUsers = [];
 
     var liveTrackingInterval = null;
     var pageWrapper = null;
@@ -192,8 +193,10 @@
             <div class="trip-map-view">
                 <!-- Top Horizontal Filter Bar (Frappe Filter Pill Style) -->
                 <div class="top-filter-bar">
-                    <div class="filter-item" style="min-width: 160px;">
-                        <input type="text" id="employee-search-filter" class="j-input" placeholder="Employee" style="width: 100%;" />
+                    <div class="filter-item">
+                        <select id="user-filter" class="j-input" style="min-width: 180px;">
+                            <option value="">User</option>
+                        </select>
                     </div>
                     <div class="filter-item">
                         <select id="status-filter" class="j-input" style="min-width: 130px;">
@@ -206,9 +209,6 @@
                         <select id="department-filter" class="j-input" style="min-width: 150px;">
                             <option value="">Department</option>
                         </select>
-                    </div>
-                    <div class="filter-item">
-                        <input type="date" id="date-filter" class="j-input" style="min-width: 140px;" />
                     </div>
                     <button class="frappe-clear-btn" id="clear-filters">Clear</button>
                 </div>
@@ -252,12 +252,10 @@
         mapViewData.layers = {};
         mapViewData.markers = {};
 
-        currentFilters.employee = '';
+        currentFilters.user = '';
         currentFilters.search = '';
         currentFilters.status = '';
         currentFilters.department = '';
-        currentFilters.date = get_today_date();
-        pageWrapper.find('#date-filter').val(currentFilters.date);
 
         // Set up Event Handlers
         setup_event_handlers();
@@ -333,7 +331,7 @@
     }
 
     // Load real active trip data from API
-    function load_trip_data(silent, selectedDate) {
+    function load_trip_data(silent) {
         if (!silent) {
             pageWrapper.find('#trip-list-content').html( /* nosemgrep */ `
                 <div style="text-align: center; padding: 20px;">
@@ -343,25 +341,26 @@
             `);
         }
 
-        var dateQuery = selectedDate || currentFilters.date || get_today_date();
+        var args = {
+            ignore_dates: 1,
+            status: 'In Progress'
+        };
+        if (currentFilters.user) {
+            args.user_id = currentFilters.user;
+        }
 
         frappe.call({
             method: "netranext_client.netranext.apis.v1.dashboard.get_dashboard_data",
-            args: {
-                date_from: dateQuery,
-                date_to: dateQuery
-            },
+            args: args,
             callback: function(response) {
                 if (response.message && response.message.status === 'success') {
                     var data = response.message.data || {};
                     var allTrips = data.journeys || [];
+                    availableUsers = data.all_users || [];
 
-                    var activeTrips = allTrips;
-                    if (dateQuery === get_today_date()) {
-                        activeTrips = allTrips.filter(function(t) {
-                            return t.status === 'In Progress';
-                        });
-                    }
+                    var activeTrips = allTrips.filter(function(t) {
+                        return t.status === 'In Progress';
+                    });
 
                     // Enrich active trips with coordinates for map display
                     activeTrips.forEach(function(trip) {
@@ -369,6 +368,7 @@
                     });
 
                     mapViewData.trips = activeTrips;
+                    populate_user_filter();
                     populate_department_filter();
                     update_view(silent);
 
@@ -470,6 +470,36 @@
         pageWrapper.find('#trip-list-content').html( /* nosemgrep */ errorHtml);
     }
 
+    function populate_user_filter() {
+        var select = pageWrapper.find('#user-filter');
+        if (!select.length) return;
+
+        var currentVal = currentFilters.user || select.val();
+        select.find('option:not(:first)').remove();
+
+        var users = {};
+        availableUsers.forEach(function(user) {
+            if (user && user.name) {
+                users[user.name] = user.full_name || user.name;
+            }
+        });
+        mapViewData.trips.forEach(function(t) {
+            if (t.user_id) {
+                users[t.user_id] = t.user_name || t.user_id;
+            }
+        });
+
+        Object.keys(users).sort(function(a, b) {
+            return String(users[a]).localeCompare(String(users[b]));
+        }).forEach(function(userId) {
+            select.append( /* nosemgrep */ '<option value="' + userId + '">' + users[userId] + '</option>');
+        });
+
+        if (currentVal) {
+            select.val(currentVal);
+        }
+    }
+
     function populate_department_filter() {
         var departments = {};
         mapViewData.trips.forEach(function (t) {
@@ -561,7 +591,7 @@
                 var isSelected = mapViewData.selectedId === id;
                 var isOffline = t.is_online === false;
                 var tooltipClass = isSelected ? 'employee-map-tooltip selected-tooltip' : 'employee-map-tooltip';
-                var empName = t.employee_name || t.employee;
+                var empName = t.user_name || t.employee_name || t.user_id || t.employee;
 
                 allPoints.push(currentPos);
 
@@ -692,7 +722,7 @@
         return '<div class="rich-popup">' +
             '<div class="popup-header" style="border-left: 4px solid ' + accentColor + ';">' +
             '<div class="popup-title">' + title + '</div>' +
-            '<div class="popup-subtitle">' + (t.employee_name || t.employee) + '</div>' +
+            '<div class="popup-subtitle">' + (t.user_name || t.employee_name || t.user_id || t.employee) + '</div>' +
             '</div>' +
             '<div class="popup-body">' +
             '<div class="popup-info-row">' +
@@ -758,9 +788,9 @@
     }
 
     function setup_event_handlers() {
-        pageWrapper.find('#employee-search-filter').on('input keyup search', function() {
-            currentFilters.search = $(this).val();
-            update_view();
+        pageWrapper.find('#user-filter').on('change', function() {
+            currentFilters.user = $(this).val();
+            load_trip_data(false);
         });
 
         pageWrapper.find('#status-filter').on('change', function() {
@@ -773,25 +803,17 @@
             update_view();
         });
 
-        pageWrapper.find('#date-filter').on('change', function() {
-            var selectedDate = $(this).val();
-            currentFilters.date = selectedDate;
-            load_trip_data(false, selectedDate);
-        });
-
         pageWrapper.find('#clear-filters').on('click', function() {
-            var todayStr = get_today_date();
+            currentFilters.user = '';
             currentFilters.search = '';
             currentFilters.status = '';
             currentFilters.department = '';
-            currentFilters.date = todayStr;
 
-            pageWrapper.find('#employee-search-filter').val('');
+            pageWrapper.find('#user-filter').val('');
             pageWrapper.find('#status-filter').val('');
             pageWrapper.find('#department-filter').val('');
-            pageWrapper.find('#date-filter').val(todayStr);
 
-            load_trip_data(false, todayStr);
+            load_trip_data(false);
         });
 
         pageWrapper.find('#fit-all-routes').on('click', function() {
@@ -835,13 +857,15 @@
         var f = currentFilters;
 
         return trips.filter(function (t) {
-            // Employee search (matches name, employee ID, or user_id)
-            var matchEmp = true;
-            if (f.search) {
+            var matchUser = true;
+            if (f.user) {
+                var selected = f.user.toLowerCase();
+                matchUser = (t.user_id || '').toLowerCase() === selected;
+            } else if (f.search) {
                 var q = f.search.toLowerCase().trim();
-                var empName = (t.employee_name || '').toLowerCase();
-                var empId = (t.employee || t.user_id || '').toLowerCase();
-                matchEmp = empName.includes(q) || empId.includes(q);
+                var userName = (t.user_name || '').toLowerCase();
+                var userId = (t.user_id || '').toLowerCase();
+                matchUser = userName.includes(q) || userId.includes(q);
             }
 
             // Status filter: Live vs Offline
@@ -858,7 +882,7 @@
                 matchDept = t.department === f.department;
             }
 
-            return matchEmp && matchStatus && matchDept;
+            return matchUser && matchStatus && matchDept;
         });
     }
 
@@ -908,7 +932,7 @@
                 // Update DOM elements in-place to eliminate flickering
                 existingCard.toggleClass('selected', isSelected);
                 existingCard.toggleClass('offline', isOffline);
-                existingCard.find('.trip-card-emp').text(t.employee_name || t.employee);
+                existingCard.find('.trip-card-emp').text(t.user_name || t.employee_name || t.user_id || t.employee);
                 existingCard.find('.trip-card-dist').text((t.distance_km || 0) + ' km');
                 existingCard.find('.card-live-badge').parent().html(badgeHtml);
                 existingCard.find('.trip-card-body').prev().find('> div:first').html(timeStatusHtml);
@@ -919,7 +943,7 @@
                 var card = $('<div class="trip-card' + (isSelected ? ' selected' : '') + (isOffline ? ' offline' : '') + '" data-id="' + id + '">' +
                     '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
                     '<div class="trip-card-emp" style="flex: 1; font-weight: 700; font-size: 14px; color: var(--t-text); max-width: 75%; word-break: break-word;">' + 
-                    (t.employee_name || t.employee) + 
+                    (t.user_name || t.employee_name || t.user_id || t.employee) + 
                     '</div>' +
                     '<div style="flex-shrink: 0; margin-left: 8px;">' +
                     badgeHtml +

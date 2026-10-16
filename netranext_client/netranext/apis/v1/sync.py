@@ -1115,7 +1115,7 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
     try:
         validate_sync_request()
 
-        # Fetch Scheduled Trips from ToDo for today
+        # Fetch Scheduled Trips assigned to the logged-in user via Open ToDo records
         scheduled_trips = []
         if frappe.db.exists("DocType", "Scheduled Trip"):
             todo_user_id = user_id
@@ -1126,7 +1126,6 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
                 todo_filters = {
                     "reference_type": "Scheduled Trip",
                     "allocated_to": todo_user_id,
-                    "date": frappe.utils.today(),
                     "status": "Open"
                 }
                 
@@ -1143,6 +1142,8 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
                     scheduled_filters = [["name", "in", trip_names]]
                     if status:
                         scheduled_filters.append(["status", "=", status])
+                    else:
+                        scheduled_filters.append(["status", "in", ["Scheduled", "In Progress"]])
                         
                     scheduled_trips = frappe.get_all(
                         "Scheduled Trip",
@@ -1155,17 +1156,32 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
         # Convert to Flutter format
         journeys = []
         
-        # Add scheduled trips
+        def _iso(value):
+            if not value:
+                return None
+            return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+        def _destination_label(value):
+            if not value:
+                return None
+            if frappe.db.exists("Address", value):
+                addr = frappe.get_cached_doc("Address", value)
+                parts = [addr.get("address_title"), addr.get("address_line1"), addr.get("city")]
+                resolved = ", ".join([p for p in parts if p])
+                return resolved or value
+            return value
+
+        # Add scheduled trips in chronological order (earliest first)
         for s_trip in scheduled_trips:
             journeys.append({
                 "id": s_trip.name,
                 "tripId": s_trip.name,
                 "userId": user_id,
                 "status": s_trip.status,
-                "scheduledStartTime": s_trip.scheduled_start_time.isoformat() if s_trip.scheduled_start_time else None,
-                "scheduledEndTime": s_trip.scheduled_end_time.isoformat() if s_trip.scheduled_end_time else None,
-                "destinationAddress": s_trip.destination_address,
-                "isActive": False,
+                "scheduledStartTime": _iso(s_trip.scheduled_start_time),
+                "scheduledEndTime": _iso(s_trip.scheduled_end_time),
+                "destinationAddress": _destination_label(s_trip.destination_address),
+                "isActive": s_trip.status == "In Progress",
                 "points": [],
             })
 
