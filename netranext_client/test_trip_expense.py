@@ -56,7 +56,8 @@ def execute():
             frappe.db.commit()
         print("'Travel' Expense Claim Type already exists and updated with account.")
 
-    # 4 & 5 & 6. Create 2 NetraNext Journeys and verify
+    # 4 & 5 & 6. Create 2 NetraNext Journeys — both should land on ONE Draft claim
+    created_journeys = []
     for i in range(2):
         print(f"\n--- Creating Journey {i+1}/2 ---")
         journey = frappe.get_doc({
@@ -69,45 +70,69 @@ def execute():
         journey.insert(ignore_permissions=True)
         frappe.db.commit()
         print(f"Created Journey: {journey.name} with {journey.distance_km} km")
-    
-        # 5. Complete the Journey (this should trigger the expense claim)
+
         journey.status = "Completed"
         journey.save(ignore_permissions=True)
         frappe.db.commit()
         print(f"Marked Journey {journey.name} as Completed. Hook should have triggered.")
-    
-        # 6. Verify Expense Claim
-        # Look for the most recently created expense claim for this employee
-        expense_claims = frappe.get_all(
-            "Expense Claim", 
-            filters={"employee": employee}, 
-            order_by="creation desc", 
-            limit=1,
-            fields=["name", "total_claimed_amount", "approval_status", "remark", "expense_approver"]
-        )
-    
-        if expense_claims:
-            claim = expense_claims[0]
-            expected_amount = (15.5 + i) * 5.0
-            
-            print("\n--- TEST RESULTS ---")
-            print(f"Found Expense Claim: {claim.name}")
-            print(f"Amount: {claim.total_claimed_amount} (Expected: {expected_amount})")
-            print(f"Expense Approver: {claim.expense_approver}")
-            print(f"Remark: {claim.remark}")
-            
-            if claim.remark and journey.name in claim.remark:
-                print("SUCCESS: The Expense Claim is properly linked to the Journey!")
-            else:
-                print("WARNING: The Expense Claim remark doesn't seem to mention the journey name.")
-                
-            if float(claim.total_claimed_amount) == float(expected_amount):
-                print("SUCCESS: Amount is calculated correctly!")
-            else:
-                print("WARNING: Amount doesn't match expected calculation.")
+        created_journeys.append(journey)
+
+    draft_claims = frappe.get_all(
+        "Expense Claim",
+        filters={"employee": employee, "docstatus": 0},
+        order_by="creation desc",
+        fields=["name", "total_claimed_amount", "approval_status", "remark", "expense_approver", "docstatus"],
+        limit=10,
+    )
+    trip_claims = [
+        c for c in draft_claims
+        if c.remark and "Generated automatically for NetraNext" in (c.remark or "")
+        and any(j.name in (c.remark or "") for j in created_journeys)
+    ]
+
+    print("\n--- TEST RESULTS ---")
+    if not trip_claims:
+        print("FAILED: No Draft Expense Claim was found for these journeys.")
+    else:
+        unique_names = {c.name for c in trip_claims}
+        claim = frappe.get_doc("Expense Claim", trip_claims[0].name)
+        expected_amount = (15.5 + 16.5) * 5.0
+        print(f"Found Draft Expense Claim: {claim.name}")
+        print(f"Draft claims for these trips: {len(unique_names)} (Expected: 1)")
+        print(f"Expense lines: {len(claim.expenses)} (Expected: 2)")
+        print(f"Amount: {claim.total_claimed_amount} (Expected: {expected_amount})")
+        print(f"Approval Status: {claim.approval_status} / docstatus={claim.docstatus}")
+        print(f"Remark: {claim.remark}")
+
+        if len(unique_names) == 1:
+            print("SUCCESS: Existing Draft Expense Claim was reused (no duplicate claims).")
         else:
-            print("\n--- TEST RESULTS ---")
-            print("FAILED: No Expense Claim was found for this employee.")
+            print("FAILED: Multiple Draft claims were created for the same employee.")
+
+        if len(claim.expenses) == 2:
+            print("SUCCESS: Both trip expenses were added to the same Draft claim.")
+        else:
+            print("WARNING: Expense line count does not match the two completed trips.")
+
+        if abs(float(claim.total_claimed_amount) - float(expected_amount)) < 0.01:
+            print("SUCCESS: Combined amount is calculated correctly (submission totals OK).")
+        else:
+            print("WARNING: Amount doesn't match expected calculation.")
+
+        # Re-save the first completed trip: must update the same draft, not create another
+        first = created_journeys[0]
+        first.distance_km = 20.0
+        first.save(ignore_permissions=True)
+        frappe.db.commit()
+        claim.reload()
+        expected_updated = (20.0 + 16.5) * 5.0
+        if abs(float(claim.total_claimed_amount) - float(expected_updated)) < 0.01 and len(claim.expenses) == 2:
+            print("SUCCESS: Re-sync updated the existing Draft instead of creating a new claim.")
+        else:
+            print(
+                f"WARNING: After re-sync amount={claim.total_claimed_amount} "
+                f"lines={len(claim.expenses)} (expected {expected_updated} / 2)."
+            )
             
     print("\n--- Test Complete ---")
     errors = frappe.get_all("Error Log", filters={"creation": [">", frappe.utils.now_datetime()]}, fields=["error", "method"])

@@ -16,9 +16,10 @@ def get_expense_claims(employee=None, limit=500):
     """
     Trip-generated Expense Claims for the Expense Claim List page.
 
-    Only claims that were auto-generated from a completed trip
+    Only claims that were auto-generated from completed trips
     (custom_reference_trip set) are returned, joined with the Employee and
-    the originating Journey so the list can show trip details.
+    the latest originating Journey so the list can show trip details.
+    Multiple trips for the same employee reuse one Draft claim.
 
     Args:
         employee (str): optional Employee filter

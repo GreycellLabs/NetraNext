@@ -37,7 +37,25 @@ EXPENSE_CLAIM_CUSTOM_FIELDS = {
             "insert_after": "custom_distance_km",
             "read_only": 1,
         },
-    ]
+    ],
+    "Expense Claim Detail": [
+        {
+            "fieldname": "custom_reference_trip",
+            "fieldtype": "Link",
+            "label": "Reference Trip",
+            "options": "NetraNext Journey",
+            "insert_after": "description",
+            "read_only": 1,
+            "description": "Journey that generated this expense line",
+        },
+        {
+            "fieldname": "custom_distance_km",
+            "fieldtype": "Float",
+            "label": "Distance (km)",
+            "insert_after": "custom_reference_trip",
+            "read_only": 1,
+        },
+    ],
 }
 
 
@@ -46,7 +64,8 @@ def execute():
     Add trip-reference custom fields to the HRMS Expense Claim DocType.
 
     These back the automatic trip expense claim generation:
-    - custom_reference_trip: exact one-claim-per-journey link (dedup key)
+    - Expense Claim.custom_reference_trip: last trip on a reused draft claim
+    - Expense Claim Detail.custom_reference_trip: per-line journey (dedup key)
     - custom_distance_km / custom_rate_per_km: figures shown on the claim and
       in the Expense Claim List page.
 
