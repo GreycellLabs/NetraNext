@@ -660,7 +660,9 @@ def get_trip_telemetry_details(trip_id=None):
             return (1, 0.0, 1, indexed[0])
         return (0, instant, _category_order.get(ev.get("type"), 1), indexed[0])
 
-    timeline_events.sort(key=_timeline_sort_key)
+    # _timeline_sort_key expects (original_index, event) pairs - sorting the
+    # bare dicts crashes on its two-value unpack.
+    timeline_events[:] = [ev for _, ev in sorted(enumerate(timeline_events), key=_timeline_sort_key)]
 
     start_odo = getattr(doc, "start_odometer", None) or meta.get("start_odometer")
     end_odo = getattr(doc, "end_odometer", None) or meta.get("end_odometer")
