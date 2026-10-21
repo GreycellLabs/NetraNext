@@ -1658,15 +1658,16 @@ def _get_holiday_data_for_employee(employee_id, from_date, to_date):
 	Read the employee's Holiday List rows between the two dates.
 
 	Returns (holidays, weekly_off_weekdays):
-	- holidays: [{'date': 'YYYY-MM-DD', 'name': str, 'weekly_off': bool}]
+	- holidays: [{'date': 'YYYY-MM-DD', 'name': str, 'weekly_off': bool, 'list': str}]
 	- weekly_off_weekdays: recurring weekly-off weekday numbers (Python:
 	  Monday=0 .. Sunday=6). A weekday qualifies when the list marks it
-	  weekly off at least 4 times in the window, so a one-off row (e.g. a
-	  single compensation-off Wednesday) never mutes that weekday forever.
-
-	The recurring-weekday rule keeps weekends correct even for dates beyond
-	the holiday list's own range (lists typically span one year).
+	  weekly off at least 4 times across the WHOLE list, so a one-off row
+	  (e.g. a single compensation-off Wednesday) never mutes that weekday
+	  forever — and short date windows (validation queries a single day)
+	  still see the recurrence instead of silently dropping weekly-off
+	  muting entirely.
 	"""
+
 	holiday_list = frappe.db.get_value("Employee", employee_id, "holiday_list")
 	if not holiday_list:
 		company = frappe.db.get_value("Employee", employee_id, "company")
@@ -1683,16 +1684,28 @@ def _get_holiday_data_for_employee(employee_id, from_date, to_date):
 	)
 
 	holidays = []
-	weekday_counts = {}
 	for row in rows:
 		day = frappe.utils.getdate(row.holiday_date)
 		holidays.append({
 			"date": str(day),
 			"name": row.description or "Holiday",
 			"weekly_off": bool(row.weekly_off),
+			"list": holiday_list,
 		})
-		if row.weekly_off:
-			weekday_counts[day.weekday()] = weekday_counts.get(day.weekday(), 0) + 1
+
+	# Recurring-weekday inference runs over the list's full range: the ≥4
+	# threshold needs several weeks of rows, which a one-day or ±1-day window
+	# can never provide.
+	weekday_counts = {}
+	all_weekly_off_rows = frappe.get_all(
+		"Holiday",
+		filters={"parent": holiday_list, "weekly_off": 1},
+		fields=["holiday_date"],
+		limit=1000,
+	)
+	for row in all_weekly_off_rows:
+		weekday = frappe.utils.getdate(row.holiday_date).weekday()
+		weekday_counts[weekday] = weekday_counts.get(weekday, 0) + 1
 
 	weekly_off_weekdays = {wd for wd, count in weekday_counts.items() if count >= 4}
 	return holidays, weekly_off_weekdays
@@ -1700,9 +1713,9 @@ def _get_holiday_data_for_employee(employee_id, from_date, to_date):
 
 def _get_approved_leave_days(employee_id, from_date, to_date):
 	"""
-	Expand the employee's Approved Leave Applications into individual dates.
-	Half-day leaves keep their half_day flag so consumers can keep alarms on
-	for the working half of the day.
+	Expand the employee's Approved SUBMITTED Leave Applications into individual
+	dates. Half-day leaves keep their half_day flag so consumers can keep alarms
+	on for the working half of the day.
 	"""
 	leaves = []
 	try:
@@ -1711,10 +1724,11 @@ def _get_approved_leave_days(employee_id, from_date, to_date):
 			filters={
 				"employee": employee_id,
 				"status": "Approved",
+				"docstatus": 1,
 				"from_date": ["<=", to_date],
 				"to_date": [">=", from_date],
 			},
-			fields=["from_date", "to_date", "leave_type", "half_day", "half_day_date"],
+			fields=["name", "from_date", "to_date", "leave_type", "half_day", "half_day_date"],
 			order_by="from_date asc",
 		)
 	except Exception as e:
@@ -1724,6 +1738,7 @@ def _get_approved_leave_days(employee_id, from_date, to_date):
 
 	for application in applications:
 		label = application.leave_type or "Approved Leave"
+		docname = application.name
 		cursor = frappe.utils.getdate(application.from_date)
 		end = frappe.utils.getdate(application.to_date)
 		half_day_date = str(application.half_day_date) if application.half_day and application.half_day_date else None
@@ -1734,6 +1749,7 @@ def _get_approved_leave_days(employee_id, from_date, to_date):
 			leaves.append({
 				"date": str(cursor),
 				"name": label,
+				"docname": docname,
 				"half_day": half_day_date == str(cursor),
 			})
 			cursor = frappe.utils.add_days(cursor, 1)
@@ -1758,6 +1774,36 @@ def _get_muted_shift_dates(employee_id, from_date, to_date):
 			muted.add(str(cursor))
 		cursor = frappe.utils.add_days(cursor, 1)
 	return muted
+
+
+def _get_shift_mute_reason(employee_id, for_date):
+	"""
+	Why [for_date] is a muted shift-reminder date for this employee, or None
+	when it is not muted. Mirrors _get_muted_shift_dates for a single date but
+	returns a specific, RECORD-BACKED reason — rule, source document, list
+	name — so a skip is auditable against the exact holiday row, leave
+	application or weekly-off recurrence that caused it. "On approved leave"
+	and "public holiday" need very different follow-ups.
+	"""
+	holidays, weekly_off_weekdays = _get_holiday_data_for_employee(employee_id, for_date, for_date)
+	for h in holidays:
+		if str(h["date"]) == str(for_date):
+			return "holiday: {0} (list {1}, date {2})".format(
+				h.get("name") or "Holiday", h.get("list") or "-", for_date
+			)
+
+	for l in _get_approved_leave_days(employee_id, for_date, for_date):
+		if str(l["date"]) == str(for_date) and not l["half_day"]:
+			return "full_day_leave: {0} (doc {1}, date {2})".format(
+				l.get("name") or "Approved Leave", l.get("docname") or "-", for_date
+			)
+
+	if frappe.utils.getdate(for_date).weekday() in weekly_off_weekdays:
+		return "weekly_off (recurring weekday {0}, date {1})".format(
+			frappe.utils.getdate(for_date).weekday(), for_date
+		)
+
+	return None
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2084,74 +2130,84 @@ def get_upcoming_shift_reminders(lookahead_minutes=None):
             if not emp.user_id:
                 continue
 
-            # get_employee_shift only returns a shift whose [start, end]
-            # range CONTAINS the probe timestamp, so probe at several points
-            # across the window (plus `now` itself) to catch shifts that
-            # start, run through, or end entirely inside the window.
-            # consider_default_shift=True everywhere so employees without an
-            # explicit assignment still get reminders for their default shift.
-            probes = [
-                now,
-                now + timedelta(minutes=lookahead / 2),
-                now + timedelta(minutes=lookahead),
-            ]
+            # Per-employee isolation: ONE bad employee record (missing User,
+            # corrupt shift assignment, HRMS lookup error) must never abort
+            # the batch — the other employees still deserve their reminders.
+            try:
+                # get_employee_shift only returns a shift whose [start, end]
+                # range CONTAINS the probe timestamp, so probe across the
+                # whole window in FINE steps to catch short assignments that
+                # start, run and end entirely between two coarse probes
+                # (plus `now` itself). consider_default_shift=True everywhere
+                # so employees without an explicit assignment still get
+                # reminders for their default shift.
+                probes = [now]
+                probe_step = timedelta(minutes=5)
+                steps = int(lookahead // 5) + 1
+                for i in range(1, steps + 1):
+                    probes.append(now + probe_step * i)
 
-            candidates = {}
-            for probe_ts in probes:
-                shift_details = get_employee_shift(emp.name, probe_ts, consider_default_shift=True)
-                if not shift_details or not shift_details.get("start_datetime"):
-                    continue
-                shift_name = (
-                    shift_details.get("shift_type").get("name")
-                    if isinstance(shift_details.get("shift_type"), dict)
-                    else shift_details.get("shift_type")
-                )
-                candidates[(shift_name, shift_details.get("start_datetime"))] = shift_details
-
-            for shift_details in candidates.values():
-                shift_name = (
-                    shift_details.get("shift_type").get("name")
-                    if isinstance(shift_details.get("shift_type"), dict)
-                    else shift_details.get("shift_type")
-                )
-                start_dt = to_naive_local(shift_details.get("start_datetime"))
-                end_dt = to_naive_local(shift_details.get("end_datetime"))
-                if not start_dt or not end_dt:
-                    continue
-
-                # Check-in reminder: shift start inside the discovery window.
-                if window_start < start_dt <= window_end:
-                    reminders.append({
-                        "employee_id": emp.name,
-                        "employee_name": emp.employee_name,
-                        "user_id": emp.user_id,
-                        "type": "check_in",
-                        "shift_start_iso": iso_of(start_dt),
-                        "shift_end_iso": iso_of(end_dt),
-                        "shift_time": start_dt.strftime('%I:%M %p'),
-                        "timezone": str(system_tz),
-                    })
-                    debug_logs.append(
-                        f"{emp.name}: check_in boundary at {start_dt.strftime('%H:%M:%S')} "
-                        f"(shift '{shift_name}') — added."
+                candidates = {}
+                for probe_ts in probes:
+                    shift_details = get_employee_shift(emp.name, probe_ts, consider_default_shift=True)
+                    if not shift_details or not shift_details.get("start_datetime"):
+                        continue
+                    shift_name = (
+                        shift_details.get("shift_type").get("name")
+                        if isinstance(shift_details.get("shift_type"), dict)
+                        else shift_details.get("shift_type")
                     )
+                    candidates[(shift_name, shift_details.get("start_datetime"))] = shift_details
 
-                # Check-out reminder: shift end inside the discovery window.
-                if window_start < end_dt <= window_end and end_dt > start_dt:
-                    reminders.append({
-                        "employee_id": emp.name,
-                        "employee_name": emp.employee_name,
-                        "user_id": emp.user_id,
-                        "type": "check_out",
-                        "shift_start_iso": iso_of(start_dt),
-                        "shift_end_iso": iso_of(end_dt),
-                        "shift_time": end_dt.strftime('%I:%M %p'),
-                        "timezone": str(system_tz),
-                    })
-                    debug_logs.append(
-                        f"{emp.name}: check_out boundary at {end_dt.strftime('%H:%M:%S')} "
-                        f"(shift '{shift_name}') — added."
+                for shift_details in candidates.values():
+                    shift_name = (
+                        shift_details.get("shift_type").get("name")
+                        if isinstance(shift_details.get("shift_type"), dict)
+                        else shift_details.get("shift_type")
                     )
+                    start_dt = to_naive_local(shift_details.get("start_datetime"))
+                    end_dt = to_naive_local(shift_details.get("end_datetime"))
+                    if not start_dt or not end_dt:
+                        continue
+
+                    # Check-in reminder: shift start inside the discovery window.
+                    if window_start < start_dt <= window_end:
+                        reminders.append({
+                            "employee_id": emp.name,
+                            "employee_name": emp.employee_name,
+                            "user_id": emp.user_id,
+                            "type": "check_in",
+                            "shift_start_iso": iso_of(start_dt),
+                            "shift_end_iso": iso_of(end_dt),
+                            "shift_time": start_dt.strftime('%I:%M %p'),
+                            "timezone": str(system_tz),
+                        })
+                        debug_logs.append(
+                            f"{emp.name}: check_in boundary at {start_dt.strftime('%H:%M:%S')} "
+                            f"(shift '{shift_name}') — added."
+                        )
+
+                    # Check-out reminder: shift end inside the discovery window.
+                    if window_start < end_dt <= window_end and end_dt > start_dt:
+                        reminders.append({
+                            "employee_id": emp.name,
+                            "employee_name": emp.employee_name,
+                            "user_id": emp.user_id,
+                            "type": "check_out",
+                            "shift_start_iso": iso_of(start_dt),
+                            "shift_end_iso": iso_of(end_dt),
+                            "shift_time": end_dt.strftime('%I:%M %p'),
+                            "timezone": str(system_tz),
+                        })
+                        debug_logs.append(
+                            f"{emp.name}: check_out boundary at {end_dt.strftime('%H:%M:%S')} "
+                            f"(shift '{shift_name}') — added."
+                        )
+            except Exception as emp_err:
+                debug_logs.append(
+                    f"{emp.name} ({emp.employee_name}): discovery FAILED, other employees "
+                    f"unaffected: {emp_err}"
+                )
 
         frappe.log_error(title="Upcoming Shift Reminders Client Debug", message="\n".join(debug_logs))
         return create_success_response("Upcoming shift reminders retrieved successfully", reminders)
@@ -2162,13 +2218,16 @@ def get_upcoming_shift_reminders(lookahead_minutes=None):
 
 
 @frappe.whitelist(allow_guest=True)
-def validate_shift_reminder(employee_id=None, reminder_type=None, shift_start_iso=None, shift_end_iso=None):
+def validate_shift_reminder(employee_id=None, reminder_type=None, shift_start_iso=None, shift_end_iso=None, expected_user_id=None):
     """
     Re-validate a scheduled shift reminder AT ITS EXACT SEND TIME. Called by
     the central server's notification dispatcher right before sending.
 
     Checks (same rules the old cron applied when it sent directly):
     - employee is still Active
+    - the employee's linked login still matches expected_user_id (the job's
+      recorded recipient — a re-linked employee must not receive pushes
+      addressed to their OLD account)
     - the shift is still assigned with the same start/end boundary
       (a reassigned or cancelled shift invalidates the reminder)
     - check_in: no IN log since shift start - 4h, and the start date is not
@@ -2176,7 +2235,9 @@ def validate_shift_reminder(employee_id=None, reminder_type=None, shift_start_is
     - check_out: an IN log exists for the shift, no OUT log since
       shift end - 4h, and the end date is not muted
 
-    Returns {valid: bool, reason: str, shift_time: 'hh:mm AM/PM'}.
+    Returns {valid: bool, reason: str, shift_time, employee_id, event_date,
+    timezone} — the extra fields make every skip record auditable against
+    the exact employee, evaluated date and storage timezone.
     """
     debug_logs = []
     try:
@@ -2199,6 +2260,9 @@ def validate_shift_reminder(employee_id=None, reminder_type=None, shift_start_is
                 "valid": 0,
                 "reason": reason,
                 "shift_time": boundary.strftime('%I:%M %p') if boundary else None,
+                "employee_id": employee_id,
+                "event_date": str(boundary.date()) if boundary else None,
+                "timezone": str(system_tz),
             })
 
         from datetime import datetime as _dt
@@ -2215,6 +2279,18 @@ def validate_shift_reminder(employee_id=None, reminder_type=None, shift_start_is
 
         if frappe.db.get_value("Employee", employee_id, "status") != "Active":
             return invalid("employee_inactive")
+
+        # Recipient revalidation: the job was scheduled for the login recorded
+        # in expected_user_id. If the employee is now linked to a different
+        # User, sending would deliver to the wrong account.
+        if expected_user_id:
+            current_user = (frappe.db.get_value("Employee", employee_id, "user_id") or "").strip()
+            if current_user.lower() != str(expected_user_id).strip().lower():
+                debug_logs.append(
+                    f"Recipient changed: job addressed '{expected_user_id}', employee now "
+                    f"linked to '{current_user}'."
+                )
+                return invalid("recipient_changed")
 
         # Shift still assigned with the same boundary? Probe with a naive
         # system-local timestamp — the same convention get_employee_shift
@@ -2246,13 +2322,11 @@ def validate_shift_reminder(employee_id=None, reminder_type=None, shift_start_is
             }):
                 return invalid("already_checked_in")
 
-            muted_dates = _get_muted_shift_dates(
-                employee_id,
-                frappe.utils.add_days(now_naive.date(), -1),
-                frappe.utils.add_days(now_naive.date(), 1),
-            )
-            if str(start_dt.date()) in muted_dates:
-                return invalid("non_working_day_holiday_or_leave")
+            mute_reason = _get_shift_mute_reason(employee_id, start_dt.date())
+            if mute_reason:
+                return invalid("non_working_day_holiday_or_leave ({0}, tz {1}, employee {2})".format(
+                    mute_reason, system_tz, employee_id
+                ))
         else:
             # check_out: must have checked in for this shift...
             checkin_start_threshold_utc = to_utc_naive(start_dt - timedelta(hours=2))
@@ -2273,13 +2347,11 @@ def validate_shift_reminder(employee_id=None, reminder_type=None, shift_start_is
             }):
                 return invalid("already_checked_out")
 
-            muted_dates = _get_muted_shift_dates(
-                employee_id,
-                frappe.utils.add_days(now_naive.date(), -1),
-                frappe.utils.add_days(now_naive.date(), 1),
-            )
-            if str(end_dt.date()) in muted_dates:
-                return invalid("non_working_day_holiday_or_leave")
+            mute_reason = _get_shift_mute_reason(employee_id, end_dt.date())
+            if mute_reason:
+                return invalid("non_working_day_holiday_or_leave ({0}, tz {1}, employee {2})".format(
+                    mute_reason, system_tz, employee_id
+                ))
 
         debug_logs.append("VALID: reminder may be sent.")
         frappe.log_error(title="Validate Shift Reminder Client Debug", message="\n".join(debug_logs))
@@ -2287,6 +2359,9 @@ def validate_shift_reminder(employee_id=None, reminder_type=None, shift_start_is
             "valid": 1,
             "reason": None,
             "shift_time": boundary.strftime('%I:%M %p'),
+            "employee_id": employee_id,
+            "event_date": str(boundary.date()),
+            "timezone": str(system_tz),
         })
 
     except Exception as e:
@@ -2295,14 +2370,17 @@ def validate_shift_reminder(employee_id=None, reminder_type=None, shift_start_is
 
 
 @frappe.whitelist(allow_guest=True)
-def validate_trip_reminder(trip_id=None, scheduled_start_time_iso=None):
+def validate_trip_reminder(trip_id=None, scheduled_start_time_iso=None, expected_user_id=None):
     """
     Re-validate a scheduled trip reminder AT ITS EXACT SEND TIME. Called by
     the central server's notification dispatcher right before sending.
 
-    Checks: trip still exists, status is still Scheduled, and the start
-    time still matches what was scheduled. Returns
-    {valid, reason, minutes_until, destination_address}.
+    Checks: trip still exists, status is still Scheduled, the start time
+    still matches what was scheduled, the trip has not been under way beyond
+    the catch-up grace, and the owning employee's linked login still matches
+    expected_user_id. Returns
+    {valid, reason, minutes_until, destination_address, employee_id,
+    event_date, timezone}.
     """
     debug_logs = []
     try:
@@ -2318,6 +2396,8 @@ def validate_trip_reminder(trip_id=None, scheduled_start_time_iso=None):
 
         now = frappe.utils.now_datetime()
         now_naive = to_naive_local(now)
+        trip = None
+        actual = None
 
         def invalid(reason):
             debug_logs.append(f"INVALID: {reason}")
@@ -2326,22 +2406,42 @@ def validate_trip_reminder(trip_id=None, scheduled_start_time_iso=None):
                 "reason": reason,
                 "minutes_until": None,
                 "destination_address": None,
+                "employee_id": trip.employee if trip else None,
+                "event_date": str(actual.date()) if actual else None,
+                "timezone": str(system_tz),
             })
 
         trip = frappe.db.get_value(
             "Scheduled Trip", trip_id,
-            ["status", "scheduled_start_time", "destination_address"], as_dict=True
+            ["status", "scheduled_start_time", "destination_address", "employee"], as_dict=True
         )
         if not trip:
             return invalid("trip_deleted")
         if trip.status != "Scheduled":
             return invalid(f"trip_status_is_{trip.status}")
 
+        # Ownership: the job's recorded recipient must still be the login
+        # linked to the trip's employee.
+        if expected_user_id:
+            trip_user = (frappe.db.get_value("Employee", trip.employee, "user_id") or "").strip()
+            if trip_user.lower() != str(expected_user_id).strip().lower():
+                debug_logs.append(
+                    f"Trip owner changed: job addressed '{expected_user_id}', trip employee "
+                    f"'{trip.employee}' now linked to '{trip_user}'."
+                )
+                return invalid("recipient_changed")
+
         expected = to_naive_local(_dt.fromisoformat(scheduled_start_time_iso))
         actual = to_naive_local(trip.scheduled_start_time)
         if not expected or not actual or abs((actual - expected).total_seconds()) > 60:
             debug_logs.append(f"Trip moved: expected {expected}, found {actual}.")
             return invalid("trip_rescheduled")
+
+        # Stale event: once the trip has been under way for more than the
+        # discovery catch-up grace (2 min), the reminder has no value.
+        if (now_naive - actual).total_seconds() > 120:
+            debug_logs.append(f"Trip already started at {actual}; now {now_naive}.")
+            return invalid("trip_already_started")
 
         minutes_until = math.ceil((actual - now_naive).total_seconds() / 60)
         debug_logs.append(f"VALID: trip {trip_id} starts in {minutes_until} minutes.")
@@ -2351,6 +2451,9 @@ def validate_trip_reminder(trip_id=None, scheduled_start_time_iso=None):
             "reason": None,
             "minutes_until": minutes_until,
             "destination_address": trip.destination_address,
+            "employee_id": trip.employee,
+            "event_date": str(actual.date()),
+            "timezone": str(system_tz),
         })
 
     except Exception as e:
@@ -2358,53 +2461,68 @@ def validate_trip_reminder(trip_id=None, scheduled_start_time_iso=None):
         return handle_api_exception(e, "EMPLOYEE_SYNC")
 
 @frappe.whitelist(allow_guest=True)
-def get_upcoming_trips():
+def get_upcoming_trips(trip_horizon_hours=None):
     """
-    Get each employee's next upcoming Scheduled Trip (status == "Scheduled",
-    scheduled_start_time in the future). Called by central server to dispatch
-    upcoming-trip push notifications. Only the earliest upcoming trip per
-    employee is returned.
+    Get every employee's UPCOMING Scheduled Trips (status == "Scheduled",
+    scheduled_start_time in the future) within a bounded horizon (default
+    24h, max 5 trips per employee). Called by central server to schedule
+    upcoming-trip push notifications. Returning ALL relevant trips — not just
+    the earliest per employee — means a second trip starting soon after the
+    first still gets its own reminder; the stable per-trip dedupe key on the
+    central server keeps scheduling idempotent. A 2-minute past grace covers
+    the just-started catch-up case.
     """
     debug_logs = []
     try:
         validate_sync_request()
 
+        from datetime import timedelta
         import math
 
         system_tz, _to_utc_naive, _to_naive_local, iso_of = _reminder_tz_helpers()
         now = frappe.utils.now_datetime()
 
-        # Earliest upcoming Scheduled Trip per employee
+        try:
+            horizon_hours = min(int(trip_horizon_hours or 24), 72)
+        except (TypeError, ValueError):
+            horizon_hours = 24
+        window_start = now - timedelta(minutes=2)
+        window_end = now + timedelta(hours=horizon_hours)
+
         trips = frappe.get_all(
             "Scheduled Trip",
             filters={
                 "status": "Scheduled",
-                "scheduled_start_time": [">=", now],
+                "scheduled_start_time": ["between", [window_start, window_end]],
             },
             fields=["name", "employee", "destination_address", "scheduled_start_time"],
             order_by="scheduled_start_time asc",
         )
 
-        earliest_by_employee = {}
-        for trip in trips:
-            if trip.employee not in earliest_by_employee:
-                earliest_by_employee[trip.employee] = trip
-
-        debug_logs.append(f"Now: {now}. Scheduled trips found: {len(trips)}, employees: {len(earliest_by_employee)}")
-
+        per_employee_cap = 5
+        count_per_employee = {}
         result = []
-        for employee, trip in earliest_by_employee.items():
+        debug_logs.append(
+            f"Now: {now}. Scheduled trips in ({window_start}, {window_end}]: {len(trips)}."
+        )
+
+        for trip in trips:
+            if count_per_employee.get(trip.employee, 0) >= per_employee_cap:
+                continue
+            count_per_employee[trip.employee] = count_per_employee.get(trip.employee, 0) + 1
+
             emp = frappe.db.get_value(
-                "Employee", employee, ["employee_name", "user_id"], as_dict=True
+                "Employee", trip.employee, ["employee_name", "user_id"], as_dict=True
             )
             if not emp or not emp.user_id:
-                debug_logs.append(f"Employee {employee} skipped: no linked User.")
+                debug_logs.append(f"Employee {trip.employee} skipped: no linked User.")
                 continue
 
             minutes_until = math.ceil((trip.scheduled_start_time - now).total_seconds() / 60)
             result.append({
                 "user_id": emp.user_id,
                 "employee_name": emp.employee_name,
+                "employee_id": trip.employee,
                 "trip_id": trip.name,
                 "destination_address": trip.destination_address,
                 "scheduled_start_time": trip.scheduled_start_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -2413,7 +2531,7 @@ def get_upcoming_trips():
                 "scheduled_start_time_iso": iso_of(trip.scheduled_start_time),
                 "minutes_until_start": minutes_until,
             })
-            debug_logs.append(f"  Next trip for {emp.employee_name}: {trip.name} in {minutes_until} minutes.")
+            debug_logs.append(f"  Trip {trip.name} for {emp.employee_name} in {minutes_until} minutes.")
 
         frappe.log_error(title="Upcoming Trips Client Debug", message="\n".join(debug_logs))
         return create_success_response("Upcoming trips retrieved successfully", result)
