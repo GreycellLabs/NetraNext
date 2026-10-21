@@ -1155,11 +1155,35 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
         
         # Convert to Flutter format
         journeys = []
-        
+
         def _iso(value):
             if not value:
                 return None
             return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+        def _system_tz_offset_suffix():
+            # Scheduled Trip times are stored as tenant system-zone wall time;
+            # the serialized schedule must carry the offset so the app can
+            # convert to the device timezone instead of guessing.
+            try:
+                from zoneinfo import ZoneInfo
+                from datetime import datetime as _dt
+                offset = _dt.now(ZoneInfo(frappe.utils.get_system_timezone())).utcoffset()
+                total = int(offset.total_seconds())
+                sign = "+" if total >= 0 else "-"
+                total = abs(total)
+                return f"{sign}{total // 3600:02d}:{(total % 3600) // 60:02d}"
+            except Exception:
+                return ""
+
+        def _iso_aware(value):
+            if not value:
+                return None
+            if hasattr(value, "isoformat"):
+                if getattr(value, "tzinfo", None) is not None:
+                    return value.isoformat()
+                return value.isoformat() + _system_tz_offset_suffix()
+            return str(value)
 
         def _destination_label(value):
             if not value:
@@ -1178,8 +1202,8 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
                 "tripId": s_trip.name,
                 "userId": user_id,
                 "status": s_trip.status,
-                "scheduledStartTime": _iso(s_trip.scheduled_start_time),
-                "scheduledEndTime": _iso(s_trip.scheduled_end_time),
+                "scheduledStartTime": _iso_aware(s_trip.scheduled_start_time),
+                "scheduledEndTime": _iso_aware(s_trip.scheduled_end_time),
                 "destinationAddress": _destination_label(s_trip.destination_address),
                 "isActive": s_trip.status == "In Progress",
                 "points": [],

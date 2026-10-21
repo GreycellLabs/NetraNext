@@ -20,20 +20,51 @@
 
     var pageWrapper = null;
 
+    // One explicit conversion per timestamp: aware ISO values (carrying 'Z'
+    // or a ±HH:MM offset from the server) are parsed to an instant and
+    // formatted in the browser's timezone. Legacy naive strings keep the
+    // wall-clock display they always had.
+    function parse_aware_instant(str) {
+        if (!str) return null;
+        var s = String(str).trim();
+        var hasOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(s);
+        if (!hasOffset) return null;
+        // 'Date' parsing needs the ISO 'T' separator (space fails on Safari)
+        var normalized = s.indexOf('T') === -1 ? s.replace(' ', 'T') : s;
+        var d = new Date(normalized);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    function format_12h_from_date(date) {
+        var hours = date.getHours();
+        var minutes = date.getMinutes();
+        var ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        var hrStr = hours < 10 ? '0' + hours : hours;
+        var minStr = minutes < 10 ? '0' + minutes : minutes;
+        return hrStr + ':' + minStr + ' ' + ampm;
+    }
+
     // Helper function to format time to 12-hour (AM/PM) in local timezone
     function format_time_12hr(timeStr) {
         if (!timeStr || timeStr === '-' || timeStr === 'Pending...') return timeStr || '-';
-        
+
         if (timeStr.includes('AM') || timeStr.includes('PM')) {
             return timeStr;
+        }
+
+        var instant = parse_aware_instant(timeStr);
+        if (instant) {
+            return format_12h_from_date(instant);
         }
 
         try {
             var date;
             var formattedStr = timeStr.toString().trim();
-            
+
             if (formattedStr.includes('-') && (formattedStr.includes(':') || formattedStr.includes('T'))) {
-                // Database stores time in local system timezone (naive format YYYY-MM-DD HH:mm:ss)
+                // Legacy naive wall time in the deployment (system) timezone
                 if (formattedStr.includes('T')) {
                     formattedStr = formattedStr.replace('T', ' ');
                 }
@@ -65,16 +96,7 @@
                 return fallback_parse_time(timeStr);
             }
 
-            var hours = date.getHours();
-            var minutes = date.getMinutes();
-            var ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12;
-            
-            var hrStr = hours < 10 ? '0' + hours : hours;
-            var minStr = minutes < 10 ? '0' + minutes : minutes;
-            
-            return hrStr + ':' + minStr + ' ' + ampm;
+            return format_12h_from_date(date);
         } catch (e) {
             console.error("Error formatting time:", e);
             return fallback_parse_time(timeStr);
@@ -107,6 +129,16 @@
         if (!dateString) return '-';
         try {
             var dateStr = dateString.toString().replace(/[\r\n]+/g, ' ').trim();
+
+            // Viewer-local calendar date derived from the same instant the
+            // time display uses (aware ISO carries the source offset).
+            var instant = parse_aware_instant(dateStr);
+            if (instant) {
+                var dd = String(instant.getDate()).padStart(2, '0');
+                var mm = String(instant.getMonth() + 1).padStart(2, '0');
+                return instant.getFullYear() + '-' + mm + '-' + dd;
+            }
+
             if (dateStr.includes('T')) {
                 return dateStr.split('T')[0];
             }

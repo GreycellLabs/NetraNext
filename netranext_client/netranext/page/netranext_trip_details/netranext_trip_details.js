@@ -561,65 +561,70 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             return;
         }
 
-        function formatTimeOnly(ts) {
+        // Chronological order by numeric instant (never by formatted string).
+        // The server pre-sorts; this stable re-sort keeps the order correct
+        // even if events arrive unordered. Untimestamped events keep their
+        // relative position after the timed ones.
+        var timed = [];
+        var untimed = [];
+        events.forEach(function(ev) {
+            var instant = ev.timestamp_utc ? Date.parse(ev.timestamp_utc) : NaN;
+            if (!isNaN(instant)) {
+                timed.push({ ev: ev, instant: instant });
+            } else {
+                untimed.push(ev);
+            }
+        });
+        timed.sort(function(a, b) { return a.instant - b.instant; });
+        events = timed.map(function(x) { return x.ev; }).concat(untimed);
+
+        // One explicit conversion per timestamp: an aware ISO instant is
+        // formatted in the browser's timezone; legacy naive/placeholder
+        // strings fall back to the raw wall-clock display from the server.
+        function formatTimeOnly(ev) {
+            var ts = ev.timestamp_utc || ev.timestamp;
             if (!ts || ts === 'N/A' || ts === 'In Progress') return ts || '';
             var str = String(ts).trim();
 
-            try {
-                var d;
-                if (str.includes('-') && (str.includes(':') || str.includes('T'))) {
-                    var formattedStr = str.replace('T', ' ').replace('Z', '');
-                    var parts = formattedStr.split(' ');
-                    var dateParts = parts[0].split('-');
-                    var timeParts = parts[1].split(':');
-                    d = new Date(
-                        parseInt(dateParts[0]),
-                        parseInt(dateParts[1]) - 1,
-                        parseInt(dateParts[2]),
-                        parseInt(timeParts[0]),
-                        parseInt(timeParts[1]),
-                        parseInt(timeParts[2] || 0)
-                    );
-                } else if (str.includes(':')) {
-                    var today = new Date();
-                    var timeParts = str.split(':');
-                    d = new Date(
-                        today.getFullYear(),
-                        today.getMonth(),
-                        today.getDate(),
-                        parseInt(timeParts[0]),
-                        parseInt(timeParts[1]),
-                        parseInt(timeParts[2] || 0)
-                    );
-                } else {
-                    d = new Date(str);
-                }
-
+            if (ev.timestamp_utc) {
+                var d = new Date(ev.timestamp_utc);
                 if (!isNaN(d.getTime())) {
-                    var hours = d.getHours();
-                    var minutes = d.getMinutes();
-                    var ampm = hours >= 12 ? 'PM' : 'AM';
-                    hours = hours % 12;
-                    hours = hours ? hours : 12;
-                    var hoursStr = hours < 10 ? '0' + hours : hours;
-                    var minutesStr = minutes < 10 ? '0' + minutes : minutes;
-                    return hoursStr + ':' + minutesStr + ' ' + ampm;
+                    return formatTime12hLocal(d);
                 }
-            } catch (e) {
-                console.error("Error formatting local time:", e);
             }
 
-            if (str.includes(' ')) {
-                return str.split(' ')[1];
-            } else if (str.includes('T')) {
-                var tPart = str.split('T')[1];
-                return tPart.split('.')[0].replace('Z', '');
+            var timePart = '';
+            if (str.includes('T')) {
+                timePart = str.split('T')[1];
+            } else if (str.includes(' ')) {
+                timePart = str.split(' ')[1];
+            } else {
+                timePart = str;
             }
-            return str;
+            timePart = timePart.split('.')[0].replace('Z', '');
+            var parts = timePart.split(':');
+            var hours = parseInt(parts[0], 10);
+            if (isNaN(hours)) return str;
+            var minutes = parts[1] || '00';
+            var ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            return (hours < 10 ? '0' + hours : hours) + ':' + minutes + ' ' + ampm;
+        }
+
+        function formatTime12hLocal(d) {
+            var hours = d.getHours();
+            var minutes = d.getMinutes();
+            var ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            var hoursStr = hours < 10 ? '0' + hours : hours;
+            var minutesStr = minutes < 10 ? '0' + minutes : minutes;
+            return hoursStr + ':' + minutesStr + ' ' + ampm;
         }
 
         events.forEach(function(ev) {
-            var timeOnly = formatTimeOnly(ev.timestamp);
+            var timeOnly = formatTimeOnly(ev);
             // End reason is displayed as a second line inside the Trip Ended
             // event (server sends it as `reason`), not as a separate item.
             var reasonHtml = ev.reason

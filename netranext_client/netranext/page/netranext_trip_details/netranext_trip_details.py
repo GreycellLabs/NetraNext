@@ -3,7 +3,7 @@ import base64
 import gzip
 import frappe
 from frappe import _
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 def get_context(context):
@@ -13,6 +13,91 @@ def get_context(context):
     context.title = "Trip Details"
     context.csrf_token = frappe.sessions.get_csrf_token()
     return context
+
+
+def _system_zone():
+    """
+    Tenant system timezone as a tzinfo.
+
+    Journey actual start/end are stored as naive datetimes written by the
+    Service bench in ITS system timezone (see netranext.apis.v1.journey.
+    parse_iso_datetime); in this deployment both benches share one zone, so
+    the tenant system zone is the storage zone for those columns. Frappe's
+    own Datetime fields (creation/modified) remain UTC and are handled
+    separately.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(frappe.utils.get_system_timezone())
+    except Exception:
+        return timezone.utc
+
+
+def _parse_dt(value):
+    """Parse a datetime or ISO string; returns None when unparseable."""
+    if isinstance(value, datetime):
+        return value
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _journey_dt_to_utc(value):
+    """
+    Interpret a stored Journey actual start/end timestamp.
+
+    Naive values are wall time in the storage zone (system zone, see
+    _system_zone); values carrying Z/offset keep their zone. Returns
+    (aware UTC datetime or None, system-zone display string or None).
+    """
+    dt = _parse_dt(value)
+    if dt is None:
+        return None, (str(value) if value else None)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_system_zone())
+    return dt.astimezone(timezone.utc), dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _viewer_day_to_storage_bounds(date_str, viewer_timezone):
+    """
+    Convert a viewer-local calendar day ('YYYY-MM-DD' in viewer_timezone)
+    to naive [start, end) bounds in the storage timezone (system zone).
+
+    Returns None when viewer_timezone is absent/unknown (legacy callers keep
+    the naive system-day filter).
+    """
+    if not viewer_timezone:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        viewer_zone = ZoneInfo(str(viewer_timezone))
+        day = datetime.strptime(str(date_str).strip(), "%Y-%m-%d")
+        start = day.replace(tzinfo=viewer_zone).astimezone(_system_zone()).replace(tzinfo=None)
+        end = (day + timedelta(days=1)).replace(tzinfo=viewer_zone).astimezone(_system_zone()).replace(tzinfo=None)
+        return start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None
+
+
+def _event_instant_and_display(raw):
+    """
+    Instant + display for telemetry timestamps (health log, legacy network
+    events, GPS points).
+
+    Mobile timestamps are UTC ISO ('Z'/offset) and are converted to the
+    system zone; naive values come from older app versions that logged the
+    phone's local wall time and are shown as recorded (same deployment
+    zone), using that zone for ordering.
+    """
+    dt = _parse_dt(raw)
+    if dt is None:
+        return None, (str(raw) if raw else None)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_system_zone())
+    return dt.timestamp(), dt.astimezone(_system_zone()).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _decode_trip_status_log(raw):
@@ -60,58 +145,6 @@ def _decode_trip_status_log(raw):
     return entries
 
 
-def _utc_to_system_tz_str(value):
-    """
-    Convert a UTC timestamp to the system timezone and format it as
-    'YYYY-MM-DD HH:mm:ss' for display.
-
-    Used for Frappe Datetime docfields (always stored in UTC) - both
-    datetime objects and naive 'YYYY-MM-DD HH:mm:ss' strings.
-    Returns None when value is empty; falls back to the raw string when it
-    cannot be parsed.
-    """
-    if not value:
-        return None
-
-    try:
-        if isinstance(value, datetime):
-            dt = value
-        else:
-            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except Exception:
-        return str(value)
-
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-
-    local_dt = frappe.utils.convert_utc_to_system_timezone(dt).replace(tzinfo=None)
-    return local_dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _iso_display_tz_str(value):
-    """
-    Normalize an ISO timestamp from the mobile app for display.
-
-    - Strings with a UTC marker ('Z' or offset): UTC -> system timezone.
-    - Naive strings without a marker: older app versions recorded the
-      phone's local wall time in the health log - show them as-is
-      (only normalized to a consistent format for sorting).
-    """
-    if not value:
-        return None
-
-    try:
-        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except Exception:
-        return str(value)
-
-    if dt.tzinfo is None:
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-    local_dt = frappe.utils.convert_utc_to_system_timezone(dt).replace(tzinfo=None)
-    return local_dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
 # The Event Timeline intentionally shows ONLY 4 event types:
 # 1. Trip Started  2. Trip Ended  3. User Offline  4. User Online
 # (Trip Start/End are built from the Journey doc fields; only network
@@ -131,28 +164,131 @@ TIMELINE_HEALTH_EVENTS = {
     ),
 }
 
+# Both capture paths (TripHealthLogger on the phone, legacy telemetry
+# network_events) can record the same physical connectivity transition with
+# slightly different timestamps. Only same-direction transitions within this
+# window are considered duplicates; a real offline->online->offline cycle
+# always takes longer.
+CONNECTION_DEDUPE_TOLERANCE_SECONDS = 5
 
-def _health_events_for_timeline(entries):
-    """
-    Convert health log connection events into the timeline_events format.
-    Only network lost/back events are surfaced (User Offline / User Online);
-    the full health log remains server-side only.
-    """
-    events = []
+
+def _health_transition_candidates(entries):
+    """Connection transitions from the trip health log (current source)."""
+    candidates = []
     for e in entries:
-        etype = e.get("e")
-        meta = TIMELINE_HEALTH_EVENTS.get(etype)
+        meta = TIMELINE_HEALTH_EVENTS.get(e.get("e"))
         if not meta:
             continue
         title, details, icon = meta
         reason = e.get("reason")
-        events.append({
-            "timestamp": _iso_display_tz_str(e.get("t")) or "",
-            "type": etype,
-            "title": title,
-            "details": f"{details} {(' - ' + str(reason)) if reason else ''}".strip(),
-            "icon": icon,
+        instant, display = _event_instant_and_display(e.get("t"))
+        candidates.append({
+            "direction": "OFFLINE" if e.get("e") == "NETWORK_LOST" else "ONLINE",
+            "instant": instant,
+            "source_rank": 0,  # health log preferred over legacy telemetry
+            "seq": len(candidates),
+            "event": {
+                "timestamp": display or "",
+                "type": e.get("e"),
+                "title": title,
+                "details": f"{details} {(' - ' + str(reason)) if reason else ''}".strip(),
+                "icon": icon,
+                "source": "health",
+            },
         })
+    return candidates
+
+
+def _legacy_transition_candidates(meta):
+    """Connection transitions from legacy telemetry network_events (trips
+    recorded before the health log existed)."""
+    network_events = (
+        (meta.get("telemetry") or {}).get("network_events")
+        or (_app_journey_metadata(meta).get("telemetry") or {}).get("network_events")
+        or []
+    )
+    candidates = []
+    for net_ev in network_events:
+        event_type = net_ev.get("event", "")
+        if event_type not in ("OFFLINE_DISCONNECT", "ONLINE_RECONNECTED"):
+            continue
+        instant, display = _event_instant_and_display(net_ev.get("timestamp"))
+        if event_type == "OFFLINE_DISCONNECT":
+            candidates.append({
+                "direction": "OFFLINE",
+                "instant": instant,
+                "source_rank": 1,
+                "seq": len(candidates),
+                "event": {
+                    "timestamp": display or "",
+                    "type": "NETWORK_OFFLINE",
+                    "title": "User Offline",
+                    "details": "Network connection lost - GPS points could not be sent to the server.",
+                    "icon": "fa-wifi-slash",
+                    "source": "legacy",
+                },
+            })
+        else:
+            candidates.append({
+                "direction": "ONLINE",
+                "instant": instant,
+                "source_rank": 1,
+                "seq": len(candidates),
+                "event": {
+                    "timestamp": display or "",
+                    "type": "NETWORK_ONLINE",
+                    "title": "User Online",
+                    "details": f"Network connection restored via {net_ev.get('type', 'Mobile/Wi-Fi')}.",
+                    "icon": "fa-wifi",
+                    "source": "legacy",
+                },
+            })
+    return candidates
+
+
+def _merged_connection_events(health_entries, meta):
+    """
+    Timeline Online/Offline events from BOTH sources, always merged.
+
+    The health log and the legacy telemetry network_events describe the same
+    connectivity transitions; suppressing one source when the other exists
+    loses events that only it captured (e.g. a health log holding only the
+    Offline transition used to hide the legacy Online reconnect).
+    Same-direction transitions within CONNECTION_DEDUPE_TOLERANCE_SECONDS
+    are treated as one transition (health capture kept).
+    """
+    candidates = _health_transition_candidates(health_entries) + _legacy_transition_candidates(meta)
+    candidates.sort(key=lambda c: (
+        1 if c["instant"] is None else 0,
+        c["instant"] if c["instant"] is not None else 0.0,
+        c["source_rank"],
+        c["seq"],
+    ))
+
+    kept = []
+    for cand in candidates:
+        duplicate = False
+        if cand["instant"] is not None:
+            for other in kept:
+                if (
+                    other["direction"] == cand["direction"]
+                    and other["instant"] is not None
+                    and abs(other["instant"] - cand["instant"]) <= CONNECTION_DEDUPE_TOLERANCE_SECONDS
+                ):
+                    duplicate = True
+                    break
+        if not duplicate:
+            kept.append(cand)
+
+    events = []
+    for cand in kept:
+        event = cand["event"]
+        event["timestamp_utc"] = (
+            datetime.fromtimestamp(cand["instant"], tz=timezone.utc).isoformat().replace("+00:00", "Z")
+            if cand["instant"] is not None
+            else None
+        )
+        events.append(event)
     return events
 
 
@@ -245,23 +381,33 @@ def _build_device_telemetry(meta, health_entries, raw_gps):
 
 
 @frappe.whitelist()
-def get_all_trips_summary(employee=None, status=None, date=None, search=None, limit=100):
+def get_all_trips_summary(employee=None, status=None, date=None, search=None, limit=100, viewer_timezone=None):
     """
     Fetch a list of all NetraNext Journey records for the list view with filtering.
     Format columns to match standard Frappe DocType List View.
+
+    viewer_timezone (optional IANA zone from the browser): the `date` filter
+    is then resolved as that viewer's local day converted to the storage
+    timezone (exclusive end) instead of naive system-day bounds. Callers
+    omitting it keep the legacy behaviour.
     """
     if not frappe.db.exists("DocType", "NetraNext Journey"):
         return []
 
-    filters = {}
+    filters = []
     or_filters = []
     if employee and str(employee).strip():
-        filters["employee"] = ["like", f"%{str(employee).strip()}%"]
+        filters.append(["employee", "like", f"%{str(employee).strip()}%"])
     if status and str(status).strip():
-        filters["status"] = str(status).strip()
+        filters.append(["status", "=", str(status).strip()])
     if date and str(date).strip():
         d_str = str(date).strip()
-        filters["start_time"] = ["between", [f"{d_str} 00:00:00", f"{d_str} 23:59:59"]]
+        tz_bounds = _viewer_day_to_storage_bounds(d_str, viewer_timezone)
+        if tz_bounds:
+            filters.append(["start_time", ">=", tz_bounds[0]])
+            filters.append(["start_time", "<", tz_bounds[1]])
+        else:
+            filters.append(["start_time", "between", [f"{d_str} 00:00:00", f"{d_str} 23:59:59"]])
 
     if search and str(search).strip():
         s = f"%{str(search).strip()}%"
@@ -293,23 +439,25 @@ def get_all_trips_summary(employee=None, status=None, date=None, search=None, li
         limit=limit
     )
 
-    now = datetime.now()
-
     for j in journeys:
-        # Format Start Time (DD-MM-YYYY HH:mm:ss) & Journey Date
-        # Convert from UTC (storage) to system timezone for display
+        # Format Start Time (DD-MM-YYYY HH:mm:ss) & Journey Date in the
+        # storage timezone (system zone wall time - the stored value itself;
+        # it is NOT UTC for these Service-written columns).
+        start_utc, start_display = _journey_dt_to_utc(j.start_time)
+        j["start_time_utc"] = start_utc.isoformat().replace("+00:00", "Z") if start_utc else None
+        end_utc, end_display = _journey_dt_to_utc(j.end_time)
+        j["end_time_utc"] = end_utc.isoformat().replace("+00:00", "Z") if end_utc else None
+
         start_time_str = "-"
         journey_date_str = "-"
-        if j.start_time:
-            local_str = _utc_to_system_tz_str(j.start_time)
-            if local_str:
-                try:
-                    dt = datetime.strptime(local_str, "%Y-%m-%d %H:%M:%S")
-                    start_time_str = dt.strftime("%d-%m-%Y %H:%M:%S")
-                    journey_date_str = dt.strftime("%d-%m-%Y")
-                except Exception:
-                    start_time_str = local_str
-                    journey_date_str = local_str.split(" ")[0] if " " in local_str else local_str
+        if start_display:
+            try:
+                dt = datetime.strptime(start_display, "%Y-%m-%d %H:%M:%S")
+                start_time_str = dt.strftime("%d-%m-%Y %H:%M:%S")
+                journey_date_str = dt.strftime("%d-%m-%Y")
+            except Exception:
+                start_time_str = start_display
+                journey_date_str = start_display.split(" ")[0] if " " in start_display else start_display
 
         j["start_time_formatted"] = start_time_str
         j["journey_date"] = journey_date_str
@@ -325,24 +473,26 @@ def get_all_trips_summary(employee=None, status=None, date=None, search=None, li
             mins = int((dur_sec % 3600) // 60)
             j["duration_formatted"] = f"{hours}h {mins}m" if mins > 0 else f"{hours}h"
 
-        # Format Time Ago (e.g. 4 h, 1 d, 1 w)
+        # Format Time Ago (e.g. 4 h, 1 d, 1 w). Datetime columns in this
+        # deployment are stored as system-zone wall time (including Frappe's
+        # own creation/modified), so the diff is taken against local now.
         time_ago = "-"
         if j.creation:
             try:
-                c_dt = j.creation if isinstance(j.creation, datetime) else datetime.fromisoformat(str(j.creation).replace("Z", ""))
-                c_dt_naive = c_dt.replace(tzinfo=None) if hasattr(c_dt, 'tzinfo') and c_dt.tzinfo else c_dt
-                diff = now - c_dt_naive
-                days = diff.days
-                secs = diff.seconds
-                if days == 0:
-                    hours = secs // 3600
-                    time_ago = f"{hours} h" if hours > 0 else "Just now"
-                elif days < 7:
-                    time_ago = f"{days} d"
-                elif days < 30:
-                    time_ago = f"{days // 7} w"
-                else:
-                    time_ago = f"{days // 30} m"
+                c_dt = _parse_dt(j.creation)
+                if c_dt is not None and c_dt.tzinfo is None:
+                    diff = datetime.now() - c_dt
+                    days = diff.days
+                    secs = diff.seconds
+                    if days == 0:
+                        hours = secs // 3600
+                        time_ago = f"{hours} h" if hours > 0 else "Just now"
+                    elif days < 7:
+                        time_ago = f"{days} d"
+                    elif days < 30:
+                        time_ago = f"{days // 7} w"
+                    else:
+                        time_ago = f"{days // 30} m"
             except Exception:
                 pass
         j["time_ago"] = time_ago
@@ -426,10 +576,13 @@ def get_trip_telemetry_details(trip_id=None):
     # The timeline shows ONLY: Trip Started, User Offline, User Online, Trip Ended
     timeline_events = []
 
-    # Convert from UTC (Frappe storage / mobile app) to system timezone
-    start_time_str = _utc_to_system_tz_str(doc.start_time) or "N/A"
+    # Journey actual start/end are stored in the storage timezone (system
+    # zone wall time) - display as stored, expose the aware UTC instant too.
+    start_utc, start_display = _journey_dt_to_utc(doc.start_time)
+    start_time_str = start_display or "N/A"
     timeline_events.append({
         "timestamp": start_time_str,
+        "timestamp_utc": start_utc.isoformat().replace("+00:00", "Z") if start_utc else None,
         "type": "TRIP_START",
         "title": "Trip Started",
         "details": f"Started at {doc.start_location or 'Initial Location'}",
@@ -441,44 +594,17 @@ def get_trip_telemetry_details(trip_id=None):
     # and its summary are server-side data and are NOT sent to the client page.
     health_entries = _decode_trip_status_log(getattr(doc, "trip_status_log", None))
 
-    # User Offline / User Online events from the health log (current source)
-    connection_events = _health_events_for_timeline(health_entries)
-
-    # Fallback for trips recorded before the health log existed: legacy
-    # network events embedded in the metadata telemetry (top level or inside
-    # the wrapped flutter_data payload)
-    if not connection_events:
-        legacy_network_events = (
-            (meta.get("telemetry") or {}).get("network_events")
-            or (_app_journey_metadata(meta).get("telemetry") or {}).get("network_events")
-            or []
-        )
-        for net_ev in legacy_network_events:
-            event_type = net_ev.get("event", "")
-            ts = _iso_display_tz_str(net_ev.get("timestamp")) or start_time_str
-            if event_type == "OFFLINE_DISCONNECT":
-                connection_events.append({
-                    "timestamp": ts,
-                    "type": "NETWORK_OFFLINE",
-                    "title": "User Offline",
-                    "details": "Network connection lost - GPS points could not be sent to the server.",
-                    "icon": "fa-wifi-slash"
-                })
-            elif event_type == "ONLINE_RECONNECTED":
-                connection_events.append({
-                    "timestamp": ts,
-                    "type": "NETWORK_ONLINE",
-                    "title": "User Online",
-                    "details": f"Network connection restored via {net_ev.get('type', 'Mobile/Wi-Fi')}.",
-                    "icon": "fa-wifi"
-                })
+    # User Offline / User Online events merged from BOTH the health log and
+    # the legacy telemetry network_events, deduplicated per transition.
+    connection_events = _merged_connection_events(health_entries, meta)
 
     timeline_events.extend(connection_events)
 
     # Device & Telemetry card payload (merged from health log + metadata)
     telemetry = _build_device_telemetry(meta, health_entries, raw_gps)
 
-    end_time_str = _utc_to_system_tz_str(doc.end_time) or "In Progress"
+    end_utc, end_display = _journey_dt_to_utc(doc.end_time)
+    end_time_str = end_display or "In Progress"
 
     end_reason_code = (
         meta.get("end_reason")
@@ -506,7 +632,8 @@ def get_trip_telemetry_details(trip_id=None):
 
     if doc.status == "Completed":
         timeline_events.append({
-            "timestamp": end_time_str,
+            "timestamp": end_display or "",
+            "timestamp_utc": end_utc.isoformat().replace("+00:00", "Z") if end_utc else None,
             "type": "TRIP_END",
             "title": "Trip Ended",
             "details": f"Ended at {resolved_end_location or 'Final Location'}",
@@ -516,10 +643,24 @@ def get_trip_telemetry_details(trip_id=None):
             "icon": "fa-flag-checkered"
         })
 
-    try:
-        timeline_events.sort(key=lambda x: str(x["timestamp"]))
-    except Exception:
-        pass
+    # Chronological order by numeric instant, never by formatted string.
+    # Tie order: Trip Start -> connectivity events in capture order -> End;
+    # events without a usable instant keep their original relative order
+    # after all timed events instead of being shuffled by display text.
+    _category_order = {"TRIP_START": 0, "TRIP_END": 2}
+
+    def _timeline_sort_key(indexed):
+        _, ev = indexed
+        ts = ev.get("timestamp_utc")
+        instant = None
+        if ts:
+            dt = _parse_dt(ts)
+            instant = dt.timestamp() if dt else None
+        if instant is None:
+            return (1, 0.0, 1, indexed[0])
+        return (0, instant, _category_order.get(ev.get("type"), 1), indexed[0])
+
+    timeline_events.sort(key=_timeline_sort_key)
 
     start_odo = getattr(doc, "start_odometer", None) or meta.get("start_odometer")
     end_odo = getattr(doc, "end_odometer", None) or meta.get("end_odometer")
@@ -536,6 +677,8 @@ def get_trip_telemetry_details(trip_id=None):
         "journey_date": start_time_str.split(" ")[0] if doc.start_time else "",
         "start_time": start_time_str,
         "end_time": end_time_str,
+        "start_time_utc": start_utc.isoformat().replace("+00:00", "Z") if start_utc else None,
+        "end_time_utc": end_utc.isoformat().replace("+00:00", "Z") if end_utc else None,
         "start_location": doc.start_location or "N/A",
         "end_location": resolved_end_location or "N/A",
         "distance_km": doc.distance_km or 0.0,

@@ -5,6 +5,35 @@ Queries local database for dashboard data
 import frappe
 from datetime import datetime
 
+
+def _system_tz_offset_suffix():
+    """
+    Current system-timezone UTC offset as '+HH:MM' / '-HH:MM'.
+
+    Datetime columns here (journey start/end, modified) are stored as
+    system-zone WALL time, so their ISO form must carry this offset - never
+    a plain 'Z', which would misdeclare wall time as UTC.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        offset = datetime.now(ZoneInfo(frappe.utils.get_system_timezone())).utcoffset()
+        total = int(offset.total_seconds())
+        sign = "+" if total >= 0 else "-"
+        total = abs(total)
+        return f"{sign}{total // 3600:02d}:{(total % 3600) // 60:02d}"
+    except Exception:
+        return ""
+
+
+def _storage_dt_iso(value):
+    """ISO string for a stored naive wall-time datetime, tagged with the
+    system-zone offset; aware values pass through unchanged."""
+    if hasattr(value, "isoformat"):
+        if getattr(value, "tzinfo", None) is not None:
+            return value.isoformat()
+        return value.isoformat() + _system_tz_offset_suffix()
+    return str(value) if value else ""
+
 @frappe.whitelist(allow_guest=True)
 def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100,
                      journey_page=1, journey_employee=None, attendance_page=1, attendance_employee=None,
@@ -138,12 +167,11 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                     
                     if not last_update_time_str:
                         # Fallback to journey's modified or start_time
+                        # (stored wall time - tagged with the system offset,
+                        # not declared UTC)
                         fallback_dt = journey.get("modified") or journey.get("start_time")
                         if fallback_dt:
-                            if hasattr(fallback_dt, "isoformat"):
-                                last_update_time_str = fallback_dt.isoformat() + "Z"
-                            else:
-                                last_update_time_str = str(fallback_dt)
+                            last_update_time_str = _storage_dt_iso(fallback_dt)
                                 
                     if last_update_time_str:
                         try:
@@ -173,8 +201,8 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                         "user_id": linked_user_id,
                         "user_name": user_name,
                         "department": department,
-                        "start_time": journey.start_time.isoformat() + "Z" if hasattr(journey.start_time, "isoformat") else (str(journey.start_time) if journey.start_time else ""),
-                        "end_time": journey.end_time.isoformat() + "Z" if hasattr(journey.end_time, "isoformat") else (str(journey.end_time) if journey.end_time else ""),
+                        "start_time": _storage_dt_iso(journey.start_time) if journey.start_time else "",
+                        "end_time": _storage_dt_iso(journey.end_time) if journey.end_time else "",
                         "start_location": journey.start_location or "Unknown",
                         "end_location": journey.end_location or "Unknown",
                         "distance_km": journey.total_distance or 0,
