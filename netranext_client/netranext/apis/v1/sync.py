@@ -39,7 +39,13 @@ def validate_sync_request():
     stored_token = settings.get_password("api_key")
 
     if not stored_token or incoming_token != stored_token:
-        tenant_bench_logger.warning(f"Sync request with invalid Integration Token. Incoming: '{incoming_token}', Stored: '{stored_token}'", "SYNC_VALIDATION")
+        # Never log either token value: the integration token grants full
+        # sync access — fingerprints are enough for correlation.
+        tenant_bench_logger.warning(
+            f"Sync request with invalid Integration Token (incoming_len={len(incoming_token or '')}, "
+            f"stored_configured={bool(stored_token)})",
+            "SYNC_VALIDATION"
+        )
         raise AuthenticationException("Invalid Integration Token")
 
     tenant_bench_logger.debug("Sync request validated successfully", "SYNC_VALIDATION")
@@ -2861,5 +2867,94 @@ def send_leave_notification_to_employee(doc, method=None):
             requests.post(endpoint, json=payload, timeout=5)
     except Exception as e:
         tenant_bench_logger.error(f"Error in send_leave_notification_to_employee: {e}", "LEAVE_SYNC")
+
+
+@frappe.whitelist(allow_guest=True)
+def get_mobile_user_candidates(search=None, limit=50, offset=0):
+    """
+    User directory for mobile licensing, called by the central server when
+    a Control Center operator picks which users may use the mobile app.
+
+    The canonical Frappe User.name is the licensing identity — grants on
+    the central server MUST be keyed by this exact value, so this endpoint
+    exists to eliminate transcription/case errors when creating grants.
+
+    Args:
+        search (str): Optional substring match on name/full_name/email
+        limit (int): Page size (1-200, default 50)
+        offset (int): Pagination offset
+
+    Returns:
+        dict: Matching enabled users with linked Employee info
+    """
+    try:
+        validate_sync_request()
+
+        try:
+            limit = max(1, min(int(limit or 50), 200))
+            offset = max(0, int(offset or 0))
+        except (TypeError, ValueError):
+            limit, offset = 50, 0
+
+        filters = {"enabled": 1, "name": ["not in", ["Administrator", "Guest"]]}
+        or_filters = None
+        if search and str(search).strip():
+            needle = f"%{str(search).strip()}%"
+            or_filters = [
+                ["User", "name", "like", needle],
+                ["User", "full_name", "like", needle],
+                ["User", "email", "like", needle],
+            ]
+
+        users = frappe.get_all(
+            "User",
+            filters=filters,
+            or_filters=or_filters,
+            fields=["name", "email", "full_name", "enabled", "user_type"],
+            order_by="name asc",
+            limit_start=offset,
+            limit_page_length=limit,
+            ignore_permissions=True
+        )
+
+        # Attach the primary active Employee record (if any) per user so
+        # operators can tell licensed Desk-only users from field staff.
+        employee_map = {}
+        if users:
+            employees = frappe.get_all(
+                "Employee",
+                filters={"user_id": ["in", [u["name"] for u in users]]},
+                fields=["name", "user_id", "employee_name", "status"],
+                ignore_permissions=True
+            )
+            for emp in employees:
+                employee_map.setdefault(emp["user_id"], emp)
+
+        candidates = []
+        for u in users:
+            emp = employee_map.get(u["name"])
+            candidates.append({
+                "user": u["name"],               # canonical licensing identity
+                "email": u.get("email"),
+                "full_name": u.get("full_name"),
+                "enabled": bool(u.get("enabled")),
+                "user_type": u.get("user_type"),
+                "employee_id": emp["name"] if emp else None,
+                "employee_name": emp["employee_name"] if emp else None,
+                "employee_active": (emp["status"] == "Active") if emp else None,
+            })
+
+        return create_success_response(
+            message=f"Found {len(candidates)} user candidates",
+            data={
+                "users": candidates,
+                "offset": offset,
+                "limit": limit,
+                "count": len(candidates)
+            }
+        )
+
+    except Exception as e:
+        return handle_api_exception(e, "USER_DIRECTORY")
 
 
