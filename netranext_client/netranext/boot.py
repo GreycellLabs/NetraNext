@@ -6,7 +6,10 @@ def has_app_permission():
     Callback for add_to_apps_screen in hooks.py.
     Ensures NetraNext app card is visible on /app/apps launcher for all logged-in system users.
     """
-    return True
+    # The app's launcher route is also considered during login. Website Users
+    # must remain on Frappe's normal portal flow rather than receiving a Desk app.
+    user = frappe.session.user
+    return user != "Guest" and frappe.get_cached_value("User", user, "user_type") == "System User"
 
 
 def on_session_creation(login_manager):

@@ -1,3 +1,5 @@
+from frappe.apps import is_desk_apps as _is_desk_apps
+
 app_name = "netranext_client"
 app_title = "NetraNext Client"
 app_publisher = "meet"
@@ -15,7 +17,12 @@ add_to_apps_screen = [
 		"name": "netranext_client",
 		"logo": "/assets/netranext_client/images/netranext-logo.svg",
 		"title": "NetraNext",
-		"route": "/app/netranext",
+		# Frappe also uses this route as an implicit/default post-login path.
+		# Enter Desk normally; the Workspace/desktop icon remains the manual
+		# NetraNext destination. Do not force a workspace from the app launcher.
+		# Use the framework's own classifier: newer v16 uses /desk, while
+		# v15 and earlier v16 builds use /app. No version-number guessing.
+		"route": "/desk" if _is_desk_apps([{"route": "/desk"}]) else "/app",
 		"has_permission": "netranext_client.netranext.boot.has_app_permission",
 	}
 ]

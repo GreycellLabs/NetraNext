@@ -7,3 +7,4 @@ netranext_client.netranext.patches.clean_duplicate_flutter_journey_ids
 # Patches added in this section will be executed after doctypes are migrated
 netranext_client.netranext.patches.convert_netranext_settings_to_single
 netranext_client.netranext.patches.add_employee_custom_user_link
+netranext_client.netranext.patches.clear_legacy_netranext_default_workspace
