@@ -138,6 +138,8 @@ pages_dict = {
 # ------------
 
 # before_install = "netranext_client.install.before_install"
+# Create missing pages, Workspace/Sidebar and the v16 Desktop Icon.
+# The same idempotent setup runs after migration for existing tenant sites.
 after_install = "netranext_client.netranext.patches.register_pages.execute"
 
 # Uninstallation
@@ -420,6 +422,7 @@ after_migrate = [
     # NOTE: a top-level `custom_fields` dict is NOT processed by this Frappe
     # version — custom fields must be created via create_custom_fields().
     "netranext_client.netranext.patches.create_expense_claim_fields.execute",
+    # Preserve administrator navigation/role settings; create only missing records.
     "netranext_client.netranext.patches.register_pages.execute"
 ]
 
