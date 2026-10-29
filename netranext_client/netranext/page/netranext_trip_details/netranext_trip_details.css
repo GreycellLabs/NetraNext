@@ -38,6 +38,14 @@
     margin-bottom: 0;
 }
 
+/* Keep rows on one line: the widened table (End Time + Odometer Photos
+   columns) scrolls horizontally inside .table-responsive on narrow screens
+   instead of wrapping cells. */
+.trips-table th,
+.trips-table td {
+    white-space: nowrap;
+}
+
 .trips-table th {
     background: #f8fafc;
     color: #4b5563;
@@ -51,6 +59,24 @@
     vertical-align: middle;
     font-size: 12px;
     color: #374151;
+}
+
+/* Odometer photo links in the trips list */
+.odo-photo-link {
+    color: #2563eb;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.odo-photo-link:hover,
+.odo-photo-link:focus {
+    text-decoration: underline;
+}
+
+.odo-photo-sep {
+    color: #cbd5e1;
+    margin: 0 5px;
 }
 
 .clickable-trip-row {

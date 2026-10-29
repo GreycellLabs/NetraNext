@@ -14,7 +14,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             <!-- FILTER TOOLBAR -->
             <div class="frappe-card filter-toolbar" style="padding: 12px 15px; margin-bottom: 15px; background: #ffffff; border-radius: 6px; border: 1px solid #e5e7eb; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
                 <div style="flex: 1; min-width: 200px;">
-                    <input type="text" id="filter-search" class="form-control input-sm" placeholder="Search ID, Employee, Journey..." style="height: 32px; font-size: 13px;">
+                    <input type="text" id="filter-search" class="form-control input-sm" placeholder="Search ID, Employee ID/Name, Journey..." style="height: 32px; font-size: 13px;">
                 </div>
                 <div style="width: 140px;">
                     <select id="filter-status" class="form-control input-sm" style="height: 32px; font-size: 13px;">
@@ -25,7 +25,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                     </select>
                 </div>
                 <div style="width: 150px;">
-                    <input type="text" id="filter-employee" class="form-control input-sm" placeholder="Employee ID..." style="height: 32px; font-size: 13px;">
+                    <input type="text" id="filter-employee" class="form-control input-sm" placeholder="Employee ID or Name..." style="height: 32px; font-size: 13px;">
                 </div>
                 <div style="width: 140px;">
                     <input type="date" id="filter-date" class="form-control input-sm" style="height: 32px; font-size: 13px;">
@@ -45,15 +45,17 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                             <tr style="background: #f9fafb;">
                                 <th>ID</th>
                                 <th>Status</th>
-                                <th>Employee</th>
+                                <th>Employee Name</th>
                                 <th>Start Time</th>
+                                <th>End Time</th>
                                 <th>Distance (km)</th>
                                 <th>Duration</th>
+                                <th>Odometer Photos</th>
                             </tr>
                         </thead>
                         <tbody id="trips-table-body">
                             <tr>
-                                <td colspan="6" class="text-center text-muted" style="padding: 20px;">Loading trips list...</td>
+                                <td colspan="8" class="text-center text-muted" style="padding: 20px;">Loading trips list...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -278,7 +280,7 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
     };
 
     page.load_all_trips = function() {
-        $('#trips-table-body').html('<tr><td colspan="6" class="text-center text-muted" style="padding: 20px;">Loading trips...</td></tr>');
+        $('#trips-table-body').html('<tr><td colspan="8" class="text-center text-muted" style="padding: 20px;">Loading trips...</td></tr>');
 
         frappe.call({
             method: 'netranext_client.netranext.page.netranext_trip_details.netranext_trip_details.get_all_trips_summary',
@@ -296,6 +298,39 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         });
     };
 
+    // Escape a server-provided value before interpolating it into row HTML
+    function esc(value) {
+        return frappe.utils.escape_html(value == null ? '' : String(value));
+    }
+
+    // List timestamps: prefer the aware UTC instant from the server and
+    // format it in the viewer's own timezone (same treatment for Start and
+    // End Time); fall back to the server-formatted string for legacy rows.
+    function formatLocalTripTime(utcStr, fallback, missingText) {
+        if (utcStr) {
+            var d = new Date(utcStr);
+            if (!isNaN(d.getTime())) {
+                var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+                return pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear()
+                    + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+            }
+        }
+        return fallback || missingText || '\u2014';
+    }
+
+    // Full-size odometer photo preview shared by the list links and the
+    // single-trip Odometer card. Opens the already-stored file - no copies.
+    page.show_odometer_photo_dialog = function(url, title) {
+        var d = new frappe.ui.Dialog({
+            title: __(title || 'Odometer Photo'),
+            size: 'large'
+        });
+        d.$body.html(
+            '<img src="' + esc(url) + '" alt="Odometer photo" style="width: 100%; border-radius: 6px; border: 1px solid #e2e8f0;" />'
+        );
+        d.show();
+    };
+
     page.render_trips_table = function(trips) {
         var tbody = $('#trips-table-body');
         tbody.empty();
@@ -303,8 +338,16 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         $('#trips-count-badge').text(trips.length + ' trip' + (trips.length === 1 ? '' : 's') + ' found');
 
         if (trips.length === 0) {
-            tbody.html('<tr><td colspan="6" class="text-center text-muted" style="padding: 20px;">No matching trip records found.</td></tr>');
+            tbody.html('<tr><td colspan="8" class="text-center text-muted" style="padding: 20px;">No matching trip records found.</td></tr>');
             return;
+        }
+
+        // "Start Photo / End Photo" link pair; an em dash per missing photo
+        function photoLink(url, label, title) {
+            if (!url) {
+                return '<span style="color: #94a3b8;">\u2014</span>';
+            }
+            return '<a href="#" class="odo-photo-link" data-photo-url="' + esc(url) + '" data-photo-title="' + esc(title) + '">' + label + '</a>';
         }
 
         trips.forEach(function(t) {
@@ -312,21 +355,44 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                 ? '<span class="indicator-pill green">Completed</span>'
                 : '<span class="indicator-pill orange">In Progress</span>';
 
+            var employeeName = t.employee_name || t.employee || '-';
+            var startTime = formatLocalTripTime(t.start_time_utc, t.start_time_formatted, '-');
+            // In-progress trips have no end timestamp yet: show an em dash
+            var endTime = formatLocalTripTime(t.end_time_utc, t.end_time_formatted, '\u2014');
+
+            var photosHtml =
+                photoLink(t.start_odometer_photo, 'Start Photo', 'Start Odometer Photo')
+                + '<span class="odo-photo-sep">/</span>'
+                + photoLink(t.end_odometer_photo, 'End Photo', 'End Odometer Photo');
+
             var rowHtml = `
                 <tr class="clickable-trip-row" data-trip-id="${t.name}">
                     <td><span style="font-weight: 500; color: #2563eb; cursor: pointer;">${t.name}</span></td>
                     <td>${statusBadge}</td>
-                    <td>${t.employee || '-'}</td>
-                    <td>${t.start_time_formatted || '-'}</td>
+                    <td title="Employee ID: ${esc(t.employee || '-')}">${esc(employeeName)}</td>
+                    <td>${startTime}</td>
+                    <td>${endTime}</td>
                     <td>${t.distance_formatted}</td>
                     <td>${t.duration_formatted}</td>
+                    <td class="td-odometer-photos">${photosHtml}</td>
                 </tr>
             `;
             tbody.append(rowHtml);
         });
 
+        // Photo links: open the full-size preview only, never the row drill-down
+        $('#trips-table-body .odo-photo-link').on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var url = $(this).data('photo-url');
+            if (url) {
+                page.show_odometer_photo_dialog(url, $(this).data('photo-title'));
+            }
+        });
+
         // Clicking any row opens the single trip details page
         $('.clickable-trip-row').on('click', function(e) {
+            if ($(e.target).closest('.odo-photo-link').length) return;
             var tripId = $(this).data('trip-id');
             if (tripId) {
                 page.load_single_trip(tripId);
@@ -473,19 +539,13 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
 
         container.html(html);
 
-        // Open the clicked odometer photo full-size in a dialog
+        // Open the clicked odometer photo full-size in a dialog (shared with
+        // the list view photo links)
         container.off('click', '.odometer-photo-link').on('click', '.odometer-photo-link', function(e) {
             e.preventDefault();
             var src = $(this).find('img').attr('src');
             if (!src) return;
-            var d = new frappe.ui.Dialog({
-                title: __('Odometer Photo'),
-                size: 'large'
-            });
-            d.$body.html(
-                '<img src="' + src + '" alt="Odometer photo" style="width: 100%; border-radius: 6px; border: 1px solid #e2e8f0;" />'
-            );
-            d.show();
+            page.show_odometer_photo_dialog(src, 'Odometer Photo');
         });
     };
 

@@ -380,6 +380,63 @@ def _build_device_telemetry(meta, health_entries, raw_gps):
     return {"device": device, "battery": battery, "gps_stats": gps_stats}
 
 
+def _photo_url(*candidates):
+    """
+    First URL-shaped odometer photo candidate (doc field first, metadata
+    fallback second). Guards the list response against legacy metadata
+    shapes that carry the raw base64 data-URL instead of a stored file URL.
+    """
+    for cand in candidates:
+        if isinstance(cand, str) and cand.startswith(
+            ("http://", "https://", "/files/", "/private/files/")
+        ):
+            return cand
+    return None
+
+
+def _employee_name_map(employee_ids):
+    """Map employee ID -> display name for the given journey employees."""
+    names = {}
+    ids = sorted({str(emp) for emp in employee_ids if emp})
+    if not ids:
+        return names
+    try:
+        rows = frappe.get_all(
+            "Employee",
+            filters={"name": ["in", ids]},
+            fields=["name", "employee_name", "first_name", "last_name"],
+        )
+    except Exception:
+        return names
+    for row in rows:
+        display = row.employee_name or " ".join(
+            part for part in (row.first_name, row.last_name) if part
+        )
+        names[row.name] = display.strip() if display else row.name
+    return names
+
+
+def _employees_matching(text):
+    """
+    Employee IDs whose ID or display name contains `text` (case-insensitive
+    LIKE). Lets the search box and employee filter accept names as well as
+    HR-EMP-xxxxx IDs; the journey employee field keeps storing the ID only.
+    """
+    t = str(text or "").strip()
+    if not t:
+        return []
+    like = f"%{t}%"
+    try:
+        rows = frappe.get_all(
+            "Employee",
+            or_filters=[["name", "like", like], ["employee_name", "like", like]],
+            fields=["name"],
+        )
+    except Exception:
+        return []
+    return [r.name for r in rows]
+
+
 @frappe.whitelist()
 def get_all_trips_summary(employee=None, status=None, date=None, search=None, limit=100, viewer_timezone=None):
     """
@@ -397,7 +454,15 @@ def get_all_trips_summary(employee=None, status=None, date=None, search=None, li
     filters = []
     or_filters = []
     if employee and str(employee).strip():
-        filters.append(["employee", "like", f"%{str(employee).strip()}%"])
+        # Employee filter accepts an ID or a display name; it resolves to the
+        # matching Employee IDs so the journey query still filters by ID.
+        candidates = _employees_matching(employee)
+        if candidates:
+            filters.append(["employee", "in", candidates])
+        else:
+            # Nothing matches by ID or name: keep the legacy ID like-match
+            # (matches nothing) so the filter visibly empties the list.
+            filters.append(["employee", "like", f"%{str(employee).strip()}%"])
     if status and str(status).strip():
         filters.append(["status", "=", str(status).strip()])
     if date and str(date).strip():
@@ -416,6 +481,11 @@ def get_all_trips_summary(employee=None, status=None, date=None, search=None, li
             ["employee", "like", s],
             ["journey_name", "like", s]
         ]
+        # Search also matches the employee display name (ID search stays
+        # covered by the employee like-filter above).
+        matched_employees = _employees_matching(search)
+        if matched_employees:
+            or_filters.append(["employee", "in", matched_employees])
 
     limit = int(limit) if limit else 100
 
@@ -433,13 +503,21 @@ def get_all_trips_summary(employee=None, status=None, date=None, search=None, li
             "distance_km",
             "duration_seconds",
             "creation",
-            "metadata"
+            "metadata",
+            "start_odometer_photo",
+            "end_odometer_photo"
         ],
         order_by="creation desc",
         limit=limit
     )
 
+    employee_names = _employee_name_map([j.employee for j in journeys])
+
     for j in journeys:
+        # Employee display name for the list (the raw employee ID stays on
+        # the row for filtering and data mapping).
+        j["employee_name"] = employee_names.get(j.employee) or j.employee
+
         # Format Start Time (DD-MM-YYYY HH:mm:ss) & Journey Date in the
         # storage timezone (system zone wall time - the stored value itself;
         # it is NOT UTC for these Service-written columns).
@@ -461,6 +539,18 @@ def get_all_trips_summary(employee=None, status=None, date=None, search=None, li
 
         j["start_time_formatted"] = start_time_str
         j["journey_date"] = journey_date_str
+
+        # Format End Time with the same storage-zone convention as Start
+        # Time; stays None while the trip is in progress so the list view
+        # renders an em dash for it.
+        end_time_str = None
+        if end_display:
+            try:
+                dt = datetime.strptime(end_display, "%Y-%m-%d %H:%M:%S")
+                end_time_str = dt.strftime("%d-%m-%Y %H:%M:%S")
+            except Exception:
+                end_time_str = end_display
+        j["end_time_formatted"] = end_time_str
 
         # Format Duration
         dur_sec = j.duration_seconds or 0
@@ -500,26 +590,38 @@ def get_all_trips_summary(employee=None, status=None, date=None, search=None, li
         # Distance formatting
         j["distance_formatted"] = f"{(j.distance_km or 0.0):.2f} km" if (j.distance_km or 0.0) > 0 else "0 km"
 
-        # Parse End Reason from Metadata
+        # Parse End Reason & odometer photo fallbacks from Metadata
         end_reason = "Completed" if j.status == "Completed" else "In Progress"
+        meta = {}
         if j.metadata:
             try:
                 meta = json.loads(j.metadata) if isinstance(j.metadata, str) else j.metadata
-                reason_code = meta.get("end_reason")
-                reason_map = {
-                    "MANUAL_USER_BUTTON_TAP": "User manually tapped End Journey",
-                    "WATCHDOG_INACTIVITY_TIMEOUT": "Auto-stopped (Inactivity timeout)",
-                    "OS_KILLED_ISOLATE_RECOVERY": "Auto-stopped (OS memory recovery)",
-                    "GPS_PERMISSION_REVOKED": "Location permission revoked",
-                    "CRITICAL_LOW_BATTERY": "Low battery auto-stop"
-                }
-                if reason_code in reason_map:
-                    end_reason = reason_map[reason_code]
-                elif reason_code:
-                    end_reason = reason_code
             except Exception:
-                pass
+                meta = {}
+        if isinstance(meta, dict):
+            reason_code = meta.get("end_reason")
+            reason_map = {
+                "MANUAL_USER_BUTTON_TAP": "User manually tapped End Journey",
+                "WATCHDOG_INACTIVITY_TIMEOUT": "Auto-stopped (Inactivity timeout)",
+                "OS_KILLED_ISOLATE_RECOVERY": "Auto-stopped (OS memory recovery)",
+                "GPS_PERMISSION_REVOKED": "Location permission revoked",
+                "CRITICAL_LOW_BATTERY": "Low battery auto-stop"
+            }
+            if reason_code in reason_map:
+                end_reason = reason_map[reason_code]
+            elif reason_code:
+                end_reason = reason_code
         j["end_reason"] = end_reason
+
+        # Odometer photo URLs: stored Attach Image field first, legacy
+        # metadata URL second. Reuses the existing stored files - no new
+        # attachments are created for the list view.
+        j["start_odometer_photo"] = _photo_url(
+            j.start_odometer_photo, meta.get("start_odometer_photo") if isinstance(meta, dict) else None
+        )
+        j["end_odometer_photo"] = _photo_url(
+            j.end_odometer_photo, meta.get("end_odometer_photo") if isinstance(meta, dict) else None
+        )
 
     return journeys
 
