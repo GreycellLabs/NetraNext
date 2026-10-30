@@ -205,29 +205,30 @@ doc_events = {
 	"Leave Application": {
 		"on_submit": "netranext_client.netranext.apis.v1.sync.send_leave_notification_to_employee",
 		"on_cancel": "netranext_client.netranext.apis.v1.sync.send_leave_notification_to_employee"
+	},
+	# Task-assignment push notifications: transition capture only (see
+	# docs/TODO_ASSIGNMENT_PUSH_NOTIFICATION_RESEARCH.md §5.1). Handlers
+	# never raise — the assignment itself must succeed independently.
+	"ToDo": {
+		"after_insert": "netranext_client.netranext.events.todo_assignment.on_todo_after_insert",
+		"on_update": "netranext_client.netranext.events.todo_assignment.on_todo_update",
+		"on_trash": "netranext_client.netranext.events.todo_assignment.on_todo_trash"
 	}
 }
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"netranext_client.tasks.all"
-# 	],
-# 	"daily": [
-# 		"netranext_client.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"netranext_client.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"netranext_client.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"netranext_client.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"cron": {
+		# Durable recovery for the assignment-event outbox. The fast path is
+		# the after-commit enqueue in events/todo_assignment.py; this sweep
+		# closes the crash-between-commit-and-enqueue gap.
+		"*/2 * * * *": [
+			"netranext_client.netranext.utils.assignment_outbox.relay_pending_assignment_events"
+		]
+	}
+}
 
 # Testing
 # -------
@@ -324,6 +325,9 @@ api_whitelisted_methods = [
     "netranext_client.netranext.apis.v1.sync.validate_trip_reminder",
     "netranext_client.netranext.apis.v1.quick_login.create_quick_login_token",
     "netranext_client.netranext.apis.v1.quick_login.redeem_quick_login_token",
+    "netranext_client.netranext.apis.v1.todo.validate_assignment_event",
+    "netranext_client.netranext.apis.v1.todo.get_assigned_todos",
+    "netranext_client.netranext.apis.v1.todo.get_assignment_details",
 ]
 
 # Custom Fields
