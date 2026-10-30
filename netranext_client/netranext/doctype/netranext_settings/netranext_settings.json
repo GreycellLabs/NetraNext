@@ -17,6 +17,7 @@
   "payable_account",
   "enable_face_verification",
   "enable_odometer_reading",
+  "allow_manual_odometer_edit",
   "offline_timeout_minutes",
   "api_credentials_section",
   "central_server_url",
@@ -83,6 +84,13 @@
    "fieldname": "enable_odometer_reading",
    "fieldtype": "Check",
    "label": "Enable Odometer Reading"
+  },
+  {
+   "default": "1",
+   "description": "When checked, employees can manually type or correct the odometer reading on the capture screen. When unchecked, the reading must come from automatic photo detection (OCR) and the field becomes read-only. Do not uncheck until the OCR feature is released, otherwise odometer capture will be blocked.",
+   "fieldname": "allow_manual_odometer_edit",
+   "fieldtype": "Check",
+   "label": "Allow Manual Odometer Reading Edit"
   },
   {
    "fieldname": "column_break_top",

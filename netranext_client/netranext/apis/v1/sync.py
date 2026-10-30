@@ -558,6 +558,42 @@ def _save_odometer_photo(photo_data, journey_id, phase):
         return None
 
 
+def _validate_odometer_sources(journey_data):
+    """
+    Enforce NetraNext Settings > Allow Manual Odometer Reading Edit.
+
+    When manual edits are disabled, any submitted start/end odometer
+    reading must carry source == "detected" (automatic photo detection).
+    Manual values — and readings submitted without a source marker (older
+    app versions) — are rejected so the restriction cannot be bypassed
+    through direct API calls. With manual edits enabled (the default)
+    every submission is accepted, exactly as before.
+    """
+    settings = frappe.get_single("NetraNext Settings")
+    if int(getattr(settings, "allow_manual_odometer_edit", 1) or 0):
+        return
+
+    for phase in ("start", "end"):
+        reading = journey_data.get(f"{phase}_odometer")
+        if reading is None or reading == "":
+            continue
+        source = journey_data.get(f"{phase}_odometer_source")
+        if source == "detected":
+            continue
+        if source == "manual":
+            raise ValidationException(
+                f"Manual odometer edits are disabled ({phase} reading). "
+                "The reading must be detected automatically from the odometer "
+                "photo — open the trip screen and retake the photo."
+            )
+        raise ValidationException(
+            f"Odometer reading rejected ({phase} reading): manual edits are "
+            "disabled and no automatic-detection result was reported. Update "
+            "the NetraNext app to the latest version and capture the reading "
+            "from the odometer photo."
+        )
+
+
 @frappe.whitelist(allow_guest=True)
 def store_journey(journey_data):
     """
@@ -588,6 +624,15 @@ def store_journey(journey_data):
         # Check if NetraNext Journey DocType exists
         if not frappe.db.exists("DocType", "NetraNext Journey"):
             raise ResourceNotFoundException("NetraNext Journey DocType")
+
+        # Odometer source enforcement (NetraNext Settings > Allow Manual
+        # Odometer Reading Edit). With manual edits disabled, a start/end
+        # reading is only accepted when the app reports it came from
+        # automatic photo detection. Journeys without readings are
+        # unaffected; this runs before the photo downloads so rejected
+        # requests never pay that cost. It applies to API requests as
+        # well — nothing below this point can bypass it.
+        _validate_odometer_sources(journey_data)
 
         # Derive journey_date from start_time if not provided
         start_time_raw = journey_data.get("start_time")
