@@ -194,6 +194,30 @@ def validate_assignment_event(event_id=None, todo_name=None, expected_recipient=
 		if not matching or matching[0].status == "Invalidated":
 			return _success({"valid": False, "reason": "superseded"})
 
+		# A closed/reopened assignment may have the same recipient again.
+		# Only its newest generation can produce a new-assignment alert.
+		latest = frappe.get_all(
+			OUTBOX_DOCTYPE,
+			filters={"todo_name": todo_name},
+			fields=["event_id"],
+			order_by="assignment_generation desc",
+			limit=1,
+			ignore_permissions=True,
+		)
+		if not latest or latest[0].event_id != event_id:
+			return _success({"valid": False, "reason": "superseded"})
+
+		if todo.get("reference_type") == "Scheduled Trip":
+			trip = frappe.db.get_value(
+				"Scheduled Trip", todo.get("reference_name"),
+				["employee", "status"], as_dict=True,
+			)
+			if not trip or trip.status not in ("Scheduled", "In Progress"):
+				return _success({"valid": False, "reason": "trip_not_actionable"})
+			trip_user = frappe.db.get_value("Employee", trip.employee, "user_id")
+			if str(trip_user or "").strip().lower() != recipient:
+				return _success({"valid": False, "reason": "trip_reassigned"})
+
 		canonical_user = _resolve_user(expected_recipient)
 		if not canonical_user:
 			return _success({"valid": False, "reason": "user_missing_or_disabled"})

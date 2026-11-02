@@ -84,10 +84,7 @@ def _record_assignment(doc):
 	if not recipient:
 		return
 	assigned_by = (doc.get("assigned_by") or "").strip()
-	# Self-assignment is already visible to the actor; Frappe's own
-	# notify_assignment skips it for the same reason.
-	if assigned_by and assigned_by.lower() == recipient.lower():
-		return
+	# Mobile alerts cover every allocation, including self-assignment.
 
 	generation = _next_generation(doc.name)
 	event_id = _assignment_event_id(doc.name, generation, recipient)

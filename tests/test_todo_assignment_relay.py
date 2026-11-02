@@ -97,10 +97,10 @@ class AssignmentEventTests(unittest.TestCase):
         self.frappe.enqueue.assert_called_once()
         self.assertTrue(self.frappe.enqueue.call_args.kwargs.get('enqueue_after_commit'))
 
-    def test_self_assignment_produces_no_event(self):
+    def test_self_assignment_records_event(self):
         self.module.on_todo_after_insert(
             FakeToDo('TD0001', 'user@tenant.example', assigned_by='user@tenant.example'))
-        self.assertFalse(self.inserted)
+        self.assertEqual(self.inserted_doc()['recipient'], 'user@tenant.example')
 
     def test_unassigned_or_closed_insert_produces_no_event(self):
         self.module.on_todo_after_insert(FakeToDo('TD0001', ''))
