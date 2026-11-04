@@ -28,6 +28,31 @@ class NetraNextJourney(Document):
 		"""Validate journey data"""
 		self.validate_employee()
 		self.validate_gps_data()
+		self.validate_odometer_units()
+
+	def validate_odometer_units(self):
+		from netranext_client.netranext.utils.odometer_units import normalize_odometer_fields
+		data = {}
+		for phase in ('start', 'end'):
+			unit = self.get(f'{phase}_odometer_unit')
+			original = self.get(f'{phase}_odometer_original')
+			canonical = self.get(f'{phase}_odometer')
+			# Frappe Float fields default to zero even when no end photo exists.
+			if canonical is not None and (canonical != 0 or unit or self.get(f'{phase}_odometer_photo')):
+				data[f'{phase}_odometer'] = canonical
+			if unit or original:
+				data[f'{phase}_odometer_original'] = original
+				data[f'{phase}_odometer_unit'] = unit
+		try:
+			normalize_odometer_fields(data)
+		except ValueError as exc:
+			frappe.throw(str(exc))
+		for key, value in data.items():
+			self.set(key, value)
+		if 'calculated_odometer_distance' in data:
+			self.distance_km = data['calculated_odometer_distance']
+			self.total_distance = self.distance_km
+
 
 	def validate_employee(self):
 		"""Validate employee exists and is active"""
@@ -54,7 +79,7 @@ class NetraNextJourney(Document):
 
 	def calculate_journey_stats(self):
 		"""Calculate journey statistics if GPS data available"""
-		if self.raw_gps_data and not self.distance_km:
+		if self.raw_gps_data and not self.distance_km and not (self.get('start_odometer_unit') and self.get('end_odometer_unit')):
 			try:
 				gps_data = json.loads(self.raw_gps_data)
 				if gps_data and len(gps_data) > 1:

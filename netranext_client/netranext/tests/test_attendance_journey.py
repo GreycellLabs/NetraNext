@@ -51,7 +51,7 @@ class AttendanceJourneyTests(unittest.TestCase):
                         'netranext_client.netranext.utils.error_handler':errors,
                         'netranext_client.netranext.utils.validators':validators})
         self.patcher = patch.dict(sys.modules, modules);self.patcher.start();self.addCleanup(self.patcher.stop)
-        for name, file in [('response_formatter','utils/response_formatter.py'),('movement_validation','utils/movement_validation.py')]:
+        for name, file in [('odometer_units','utils/odometer_units.py'),('response_formatter','utils/response_formatter.py'),('movement_validation','utils/movement_validation.py')]:
             load('netranext_client.netranext.utils.'+name, ROOT/file)
         self.helper = load('netranext_client.netranext.utils.attendance_journey', ROOT/'utils/attendance_journey.py')
         sys.modules['netranext_client.netranext.utils'].attendance_journey = self.helper
@@ -270,6 +270,43 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(len(journey['points']),1)
         self.assertEqual(journey['reason'],'Attendance-Based Automatic Start')
 
+
+    def test_original_miles_survive_attendance_context_and_trip_sync(self):
+        self.checkin()
+        result=self.api.store_journey(dict(employee_id=self.employee, attendance_action='start_photo',
+            attendance_checkin='IN1', start_odometer=999, start_odometer_original=100,
+            start_odometer_unit='mi', start_odometer_photo='image', start_odometer_source='detected'))
+        self.assertEqual(result['status'],'success')
+        self.assertEqual(self.context()['start_reading'],160.9344)
+        self.assertEqual(self.context()['start_original'],100)
+        self.assertEqual(self.context()['start_unit'],'mi')
+        self.assertEqual(self.confirm()['status'],'success')
+        self.assertEqual(self.journey()['start_odometer_original'],100)
+        self.assertEqual(self.journey()['start_odometer_unit'],'mi')
+        context=self.context()
+        result=self.api.store_journey(dict(employee_id=self.employee, journey_id=context['journey_id'],
+            tracking_source='attendance_auto', attendance_checkin='IN1', status='Completed',
+            start_odometer=0, start_odometer_original=0, start_odometer_unit='km',
+            end_odometer=0, end_odometer_original=110, end_odometer_unit='mi',
+            end_odometer_photo='image',end_odometer_source='detected',distance_km=999))
+        self.assertEqual(result['status'],'success')
+        self.assertEqual(self.journey()['start_odometer_original'],100)
+        self.assertEqual(self.journey()['end_odometer_original'],110)
+        self.assertAlmostEqual(self.journey()['distance_km'],16.09344)
+        self.assertAlmostEqual(self.journey()['calculated_odometer_distance'],16.09344)
+        detail=self.api.get_journey_details(journey_id=context['journey_id'])['data']
+        self.assertEqual(detail['startOdometerOriginal'],100)
+        self.assertEqual(detail['startOdometerUnit'],'mi')
+        self.assertEqual(detail['endOdometerOriginal'],110)
+        self.assertEqual(detail['endOdometerUnit'],'mi')
+
+    def test_unknown_unit_cannot_persist_attendance_evidence(self):
+        self.checkin()
+        result=self.api.store_journey(dict(employee_id=self.employee, attendance_action='start_photo',
+            attendance_checkin='IN1', start_odometer_original=100, start_odometer_unit=None,
+            start_odometer_photo='image', start_odometer_source='detected'))
+        self.assertEqual(result['status'],'error')
+        self.assertTrue(self.context()['pending_start'])
 
 if __name__ == '__main__':
     unittest.main()

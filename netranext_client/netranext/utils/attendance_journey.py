@@ -136,6 +136,11 @@ def prepare_auto_sync(data):
         if conflict:
             frappe.throw('Another trip is already in progress.')
     from netranext_client.netranext.apis.v1.sync import _validate_odometer_sources, _save_odometer_photo
+    from netranext_client.netranext.utils.odometer_units import normalize_odometer_fields
+    # Start evidence belongs to the stored attendance context, never a stale heartbeat.
+    end_evidence = {k: v for k, v in data.items() if k.startswith('end_odometer')}
+    normalize_odometer_fields(end_evidence)
+    data.update(end_evidence)
     _validate_odometer_sources({k: data[k] for k in ('end_odometer', 'end_odometer_source') if k in data})
     if data.get('end_odometer') is not None and data.get('end_odometer_photo'):
         previous_photo = frappe.db.get_value('NetraNext Journey', existing, 'end_odometer_photo') if existing else None
@@ -152,11 +157,13 @@ def prepare_auto_sync(data):
         data.update(status='Completed', end_time=context['end_time'])
     # The capture deadline is server receipt before departure. A late photo
     # is retained separately and NEVER supplies the original start reading.
-    for field in ('start_odometer', 'start_odometer_photo', 'start_odometer_source'):
+    for field in ('start_odometer', 'start_odometer_photo', 'start_odometer_source', 'start_odometer_original', 'start_odometer_unit'):
         data.pop(field, None)
     if not context.get('pending_start') and context.get('start_photo'):
         data.update(start_odometer=context['start_reading'], start_odometer_photo=context['start_photo'],
                     start_odometer_source=context['start_source'])
+        if context.get('start_unit'):
+            data.update(start_odometer_original=context['start_original'], start_odometer_unit=context['start_unit'])
     if data.get('end_odometer') is not None and data.get('end_odometer_photo'):
         if context.get('start_reading') is not None and float(data['end_odometer']) < float(context['start_reading']):
             frappe.throw('End odometer cannot be below start odometer.')
@@ -186,11 +193,13 @@ def action(data):
         frappe.throw('No attendance check-in to update.')
     if operation == 'start_photo':
         from netranext_client.netranext.apis.v1.sync import _save_odometer_photo, _validate_odometer_sources
+        from netranext_client.netranext.utils.odometer_units import normalize_odometer_fields
+        normalize_odometer_fields(data)
         reading = data.get('start_odometer')
         if reading is None or not data.get('start_odometer_photo'):
             frappe.throw('An odometer reading and photo are required.')
         value = float(reading)
-        if not 0 <= value <= 9999999:
+        if not 0 <= value <= 9999999 * 1.609344:
             frappe.throw('Invalid odometer reading.')
         _validate_odometer_sources(data)
         photo = _save_odometer_photo(data['start_odometer_photo'], context['journey_id'], 'start')
@@ -201,7 +210,9 @@ def action(data):
             # Keep pending_start and the original reading unchanged.
         else:
             context.update(start_photo=photo, start_reading=value,
-                           start_source=data.get('start_odometer_source'), pending_start=False)
+                           start_source=data.get('start_odometer_source'),
+                           start_original=data.get('start_odometer_original'), start_unit=data.get('start_odometer_unit'),
+                           pending_start=False)
         save(checkin_id, context)
     elif operation == 'confirm':
         if context.get('started_at') and frappe.db.get_value('NetraNext Journey',

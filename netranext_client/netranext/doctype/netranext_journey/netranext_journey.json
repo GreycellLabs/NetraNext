@@ -46,7 +46,11 @@
   "section_break_auto_tracking",
   "tracking_source",
   "reason",
-  "attendance_checkin"
+  "attendance_checkin",
+  "start_odometer_original",
+  "start_odometer_unit",
+  "end_odometer_original",
+  "end_odometer_unit"
  ],
  "fields": [
   {
@@ -209,12 +213,16 @@
   {
    "fieldname": "start_odometer",
    "fieldtype": "Float",
-   "label": "Start Odometer Reading"
+   "label": "Start Odometer Reading",
+   "description": "Canonical kilometres. Original dashboard value and unit are stored separately.",
+   "precision": "9"
   },
   {
    "fieldname": "end_odometer",
    "fieldtype": "Float",
-   "label": "End Odometer Reading"
+   "label": "End Odometer Reading",
+   "description": "Canonical kilometres. Original dashboard value and unit are stored separately.",
+   "precision": "9"
   },
   {
    "fieldname": "column_break_odometer",
@@ -233,7 +241,8 @@
   {
    "fieldname": "calculated_odometer_distance",
    "fieldtype": "Float",
-   "label": "Calculated Odometer Distance (km)"
+   "label": "Calculated Odometer Distance (km)",
+   "precision": "9"
   },
   {
    "fieldname": "start_odometer_photo",
@@ -272,6 +281,34 @@
    "options": "Employee Checkin",
    "label": "Attendance Check-in",
    "read_only": 1
+  },
+  {
+   "fieldname": "start_odometer_original",
+   "fieldtype": "Float",
+   "label": "Start Odometer Original Reading",
+   "read_only": 1,
+   "precision": "9"
+  },
+  {
+   "fieldname": "start_odometer_unit",
+   "fieldtype": "Select",
+   "label": "Start Odometer Original Unit",
+   "read_only": 1,
+   "options": "\nkm\nmi"
+  },
+  {
+   "fieldname": "end_odometer_original",
+   "fieldtype": "Float",
+   "label": "End Odometer Original Reading",
+   "read_only": 1,
+   "precision": "9"
+  },
+  {
+   "fieldname": "end_odometer_unit",
+   "fieldtype": "Select",
+   "label": "End Odometer Original Unit",
+   "read_only": 1,
+   "options": "\nkm\nmi"
   }
  ],
  "hide_toolbar": 0,

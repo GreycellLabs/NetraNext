@@ -661,6 +661,14 @@ def store_journey(journey_data):
             return create_success_response(message='Journey attendance context updated', data=attendance_journey.action(journey_data))
         auto_journey = journey_data.get('tracking_source') == 'attendance_auto'
         auto_context = attendance_journey.prepare_auto_sync(journey_data) if auto_journey else None
+        from netranext_client.netranext.utils.odometer_units import normalize_odometer_fields
+        try:
+            normalize_odometer_fields(journey_data)
+            if journey_data.get('start_odometer') is not None and journey_data.get('end_odometer') is not None:
+                journey_data['distance_km'] = journey_data['calculated_odometer_distance']
+        except ValueError as exc:
+            raise ValidationException(str(exc))
+
 
         # Odometer source enforcement (NetraNext Settings > Allow Manual
         # Odometer Reading Edit). With manual edits disabled, a start/end
@@ -817,6 +825,10 @@ def store_journey(journey_data):
         # the update and the insert path attach them exactly once.
         journey_meta = frappe.get_meta("NetraNext Journey")
         field_names = [f.fieldname for f in journey_meta.fields]
+        for phase in ('start', 'end'):
+            if journey_data.get(f'{phase}_odometer_original') is not None:
+                if not {f'{phase}_odometer_original', f'{phase}_odometer_unit'}.issubset(field_names):
+                    raise ValidationException('Journey odometer unit fields are not installed. Run bench migrate before syncing.')
 
         optional_mappings = {
             "journey_name": journey_data.get("journey_name"),
@@ -838,7 +850,11 @@ def store_journey(journey_data):
             "destination_address": journey_data.get("destination_address"),
             "trip_status_log": journey_data.get("trip_status_log"),
             "start_odometer": journey_data.get("start_odometer"),
+            "start_odometer_original": journey_data.get("start_odometer_original"),
+            "start_odometer_unit": journey_data.get("start_odometer_unit"),
             "end_odometer": journey_data.get("end_odometer"),
+            "end_odometer_original": journey_data.get("end_odometer_original"),
+            "end_odometer_unit": journey_data.get("end_odometer_unit"),
             "start_notes": journey_data.get("start_notes"),
             "end_notes": journey_data.get("end_notes"),
             "calculated_odometer_distance": journey_data.get("calculated_odometer_distance"),
@@ -1491,8 +1507,12 @@ def get_journey_details(trip_id=None, journey_id=None):
             "metadata": metadata,
             "points": _journey_points(raw_points, trip.start_time),
             "startOdometer": trip.get('start_odometer'),
+            "startOdometerOriginal": trip.get('start_odometer_original') if trip.get('start_odometer_unit') else None,
+            "startOdometerUnit": trip.get('start_odometer_unit') or None,
             "startOdometerSource": metadata.get("attendance", {}).get("start_source") or metadata.get("flutter_data", {}).get("startOdometerSource"),
             "endOdometer": trip.get('end_odometer'),
+            "endOdometerOriginal": trip.get('end_odometer_original') if trip.get('end_odometer_unit') else None,
+            "endOdometerUnit": trip.get('end_odometer_unit') or None,
             "endOdometerSource": metadata.get("attendance", {}).get("end_source") or metadata.get("flutter_data", {}).get("endOdometerSource"),
             "startOdometerPhoto": trip.get('start_odometer_photo'),
             "endOdometerPhoto": trip.get('end_odometer_photo')
