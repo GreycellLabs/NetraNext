@@ -464,7 +464,7 @@ def store_attendance(att_data):
         # of it, so every failure is contained here).
         tracking_payload = None
         try:
-            from netranext_client.netranext.apis.v1.attendance_tracking import (
+            from netranext_client.netranext.utils.attendance_journey import (
                 handle_checkin_stored,
                 handle_checkout_stored,
             )
@@ -624,54 +624,6 @@ def _validate_odometer_sources(journey_data):
         )
 
 
-def _validate_attendance_auto_identity(journey_data):
-    """Server-side identity check for attendance_auto journeys.
-
-    A payload claiming to be an automatic trip must trace to a tracking
-    session whose reserved_journey_id matches the journey id it syncs.
-    This is what stops anything outside the validated movement flow from
-    creating or mutating an automatic trip.
-
-    Returns the session docname; raises ValidationException otherwise.
-    """
-    journey_id = journey_data.get("journey_id")
-    if not journey_id:
-        raise ValidationException(
-            "Automatic journeys must carry their reserved journey id."
-        )
-    session = frappe.db.get_value(
-        "NetraNext Attendance Trip Session",
-        {"reserved_journey_id": journey_id},
-        ["name", "status", "journey", "movement_confirmed_at"],
-        as_dict=True,
-    )
-    if not session:
-        raise ValidationException(
-            "Automatic trip rejected: journey id does not match any "
-            "attendance tracking session."
-        )
-    existing = frappe.db.get_value("NetraNext Journey", {
-        "flutter_journey_id": journey_id,
-        "employee": journey_data["employee_id"],
-    }, "name")
-    if existing:
-        # Continuation sync of the known automatic journey (points/status).
-        if session.journey and session.journey != existing:
-            raise ValidationException(
-                "Automatic trip rejected: session is linked to a different journey."
-            )
-        return session.name
-    # Creating a NEW automatic journey from a sync: only legitimate while
-    # the session actually confirmed movement (mobile may have been offline
-    # at confirmation time - the event replay carries the same identity).
-    if not session.movement_confirmed_at:
-        raise ValidationException(
-            "Automatic trip rejected: movement was never confirmed for "
-            "this session."
-        )
-    return session.name
-
-
 @frappe.whitelist(allow_guest=True)
 def store_journey(journey_data):
     """
@@ -703,6 +655,13 @@ def store_journey(journey_data):
         if not frappe.db.exists("DocType", "NetraNext Journey"):
             raise ResourceNotFoundException("NetraNext Journey DocType")
 
+        from netranext_client.netranext.utils import attendance_journey
+        attendance_journey.lock_employee(journey_data['employee_id'])
+        if journey_data.get('attendance_action'):
+            return create_success_response(message='Journey attendance context updated', data=attendance_journey.action(journey_data))
+        auto_journey = journey_data.get('tracking_source') == 'attendance_auto'
+        auto_context = attendance_journey.prepare_auto_sync(journey_data) if auto_journey else None
+
         # Odometer source enforcement (NetraNext Settings > Allow Manual
         # Odometer Reading Edit). With manual edits disabled, a start/end
         # reading is only accepted when the app reports it came from
@@ -711,15 +670,6 @@ def store_journey(journey_data):
         # requests never pay that cost. It applies to API requests as
         # well — nothing below this point can bypass it.
         _validate_odometer_sources(journey_data)
-
-        # Attendance-auto journeys: verify identity against the tracking
-        # session BEFORE any lookup/insert, and route this sync exclusively
-        # through the reserved-id path (legacy merge/force-complete
-        # fallbacks must never touch automatic trips).
-        auto_journey = (journey_data.get("tracking_source") or "") == "attendance_auto"
-        auto_session_name = None
-        if auto_journey:
-            auto_session_name = _validate_attendance_auto_identity(journey_data)
 
         # Derive journey_date from start_time if not provided
         start_time_raw = journey_data.get("start_time")
@@ -771,6 +721,8 @@ def store_journey(journey_data):
 
             # 2. Journey name matches the trip_id
             if trip_id and frappe.db.exists("NetraNext Journey", trip_id):
+                if frappe.db.get_value("NetraNext Journey", trip_id, "employee") != journey_data['employee_id']:
+                    raise ValidationException("Journey belongs to another employee.")
                 return trip_id
 
             # Attendance-auto journeys resolve ONLY through their reserved
@@ -786,7 +738,7 @@ def store_journey(journey_data):
             # client without a flutter journey id. A Completed journey with its
             # own new flutter id must create a fresh record instead of merging
             # into an unrelated old trip.
-            if doc_data.get("status") == "In Progress" or not flutter_journey_id:
+            if not flutter_journey_id:
                 found = frappe.db.get_value("NetraNext Journey", {
                     "employee": journey_data["employee_id"],
                     "status": "In Progress"
@@ -820,6 +772,16 @@ def store_journey(journey_data):
             return None
 
         existing_journey = find_existing_journey()
+        if not existing_journey and is_in_progress and frappe.db.get_value(
+                'NetraNext Journey', {'employee': journey_data['employee_id'], 'status': 'In Progress'}, 'name'):
+            raise ValidationException('Another trip is already in progress.')
+        if existing_journey:
+            previous = frappe.db.get_value('NetraNext Journey', existing_journey,
+                ['status', 'tracking_source'], as_dict=True)
+            if previous.tracking_source == 'attendance_auto' and not auto_journey:
+                raise ValidationException('Automatic journey requires attendance ownership.')
+            if previous.status == 'Completed' and is_in_progress:
+                return create_success_response(message='Completed journey retained', data={'journey_id': existing_journey})
 
         lock_acquired = False
         if not existing_journey:
@@ -880,27 +842,21 @@ def store_journey(journey_data):
             "start_notes": journey_data.get("start_notes"),
             "end_notes": journey_data.get("end_notes"),
             "calculated_odometer_distance": journey_data.get("calculated_odometer_distance"),
-            "start_odometer_photo": _save_odometer_photo(journey_data.get("start_odometer_photo"), journey_data.get("journey_id"), "start"),
-            "end_odometer_photo": _save_odometer_photo(journey_data.get("end_odometer_photo"), journey_data.get("journey_id"), "end"),
+            "start_odometer_photo": (auto_context.get("start_photo") if auto_context else _save_odometer_photo(journey_data.get("start_odometer_photo"), journey_data.get("journey_id"), "start")),
+            "end_odometer_photo": (journey_data.get("end_odometer_photo") if auto_context else _save_odometer_photo(journey_data.get("end_odometer_photo"), journey_data.get("journey_id"), "end")),
         }
 
         for field, value in optional_mappings.items():
             if field in field_names and value is not None:
                 doc_data[field] = value
 
-        # Attendance-auto identity fields (server-validated above). Never
-        # taken from the raw payload without the session check, and finance
-        # state stays exclusively under the state machine's control.
-        if auto_journey and auto_session_name:
-            doc_data["tracking_source"] = "attendance_auto"
-            doc_data["attendance_session"] = auto_session_name
-            doc_data["collection_state"] = "active" if is_in_progress else "completed"
-            if journey_data.get("observed_start_at") and "observed_start_at" in field_names:
-                doc_data["observed_start_at"] = journey_data.get("observed_start_at")
-            if journey_data.get("observed_end_at") and "observed_end_at" in field_names:
-                doc_data["observed_end_at"] = journey_data.get("observed_end_at")
-            if journey_data.get("departure_detected_at") and "departure_detected_at" in field_names:
-                doc_data["departure_detected_at"] = journey_data.get("departure_detected_at")
+        if auto_journey:
+            doc_data['tracking_source'] = 'attendance_auto'
+            doc_data['attendance_checkin'] = journey_data['attendance_checkin']
+            if auto_context.get('start_photo') and not auto_context.get('pending_start'):
+                doc_data['start_odometer_photo'] = auto_context['start_photo']
+        if 'reason' in field_names and journey_data.get('reason'):
+            doc_data['reason'] = journey_data['reason']
 
         # Final re-check right before writing: the photo downloads above can
         # take many seconds — a concurrent sync may have committed this journey
@@ -1283,6 +1239,9 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
     try:
         validate_sync_request()
 
+        if not employee_id and user_id:
+            employee_id = frappe.db.get_value('Employee', {'user_id': user_id}, 'name')
+
         # Fetch Scheduled Trips assigned to the logged-in user via Open ToDo records
         scheduled_trips = []
         if frappe.db.exists("DocType", "Scheduled Trip"):
@@ -1377,6 +1336,16 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
                 "points": [],
             })
 
+        if employee_id:
+            filters = {'employee': employee_id}
+            if status:
+                filters['status'] = status
+            for row in frappe.get_all('NetraNext Journey', filters=filters,
+                    fields=['name'], order_by='start_time desc', limit_page_length=min(int(limit), 100)):
+                detail = get_journey_details(trip_id=row.name)
+                if detail.get('status') == 'success':
+                    journeys.append(detail['data'])
+
         tenant_bench_logger.info(f"Returned {len(journeys)} journeys", "JOURNEY_SYNC")
 
         return create_success_response(
@@ -1389,6 +1358,33 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
 
     except Exception as e:
         return handle_api_exception(e, "JOURNEY_SYNC")
+
+def _journey_time_iso(value):
+    if not value:
+        return None
+    from frappe.utils import get_datetime
+    from zoneinfo import ZoneInfo
+    dt = get_datetime(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo(frappe.utils.get_system_timezone()))
+    return dt.isoformat()
+
+
+def _journey_points(raw_points, start_time):
+    from datetime import timezone
+    points = []
+    if not isinstance(raw_points, list):
+        return points
+    for point in raw_points:
+        if not isinstance(point, dict) or point.get('latitude') is None or point.get('longitude') is None:
+            continue
+        stamp = point.get('timestamp')
+        if isinstance(stamp, (float, int)):
+            stamp = datetime.fromtimestamp(stamp / 1000, timezone.utc).isoformat()
+        points.append(dict(point, latitude=float(point['latitude']), longitude=float(point['longitude']),
+                           timestamp=str(stamp or _journey_time_iso(start_time))))
+    return points
+
 
 @frappe.whitelist(allow_guest=True)
 def get_journey_details(trip_id=None, journey_id=None):
@@ -1454,6 +1450,7 @@ def get_journey_details(trip_id=None, journey_id=None):
 
         # Build response - include raw GPS coordinates for full detailed route
         coordinates = []
+        raw_points = []
         raw_gps = trip.get("raw_gps_data") or trip.get("raw_coordinates")
         if raw_gps:
             import json
@@ -1480,7 +1477,25 @@ def get_journey_details(trip_id=None, journey_id=None):
             "coordinates": coordinates,
             "points_count": trip.get("original_points_count") or trip.get("waypoint_count") or 0,
             "simplified_points": trip.get("simplified_points_count") or 0,
-            "is_active": trip.status == "In Progress"
+            "is_active": trip.status == "In Progress",
+            "id": trip.get('flutter_journey_id') or trip.name,
+            "tripId": trip.name,
+            "isActive": trip.status == 'In Progress',
+            "startDate": _journey_time_iso(trip.get("start_time")),
+            "endDate": _journey_time_iso(trip.get("end_time")),
+            "startAddress": trip.get('start_location'),
+            "endAddress": trip.get('end_location'),
+            "reason": trip.get('reason') or ('Attendance-Based Automatic Start' if trip.get('tracking_source') == 'attendance_auto' else None),
+            "tracking_source": trip.get('tracking_source'),
+            "attendance_checkin": trip.get('attendance_checkin'),
+            "metadata": metadata,
+            "points": _journey_points(raw_points, trip.start_time),
+            "startOdometer": trip.get('start_odometer'),
+            "startOdometerSource": metadata.get("attendance", {}).get("start_source") or metadata.get("flutter_data", {}).get("startOdometerSource"),
+            "endOdometer": trip.get('end_odometer'),
+            "endOdometerSource": metadata.get("attendance", {}).get("end_source") or metadata.get("flutter_data", {}).get("endOdometerSource"),
+            "startOdometerPhoto": trip.get('start_odometer_photo'),
+            "endOdometerPhoto": trip.get('end_odometer_photo')
         }
 
         return create_success_response(

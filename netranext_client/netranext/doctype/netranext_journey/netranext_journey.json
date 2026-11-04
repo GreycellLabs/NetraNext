@@ -45,14 +45,8 @@
   "end_odometer_photo",
   "section_break_auto_tracking",
   "tracking_source",
-  "attendance_session",
-  "collection_state",
-  "evidence_status",
-  "finance_status",
-  "financial_distance_basis",
-  "observed_start_at",
-  "observed_end_at",
-  "departure_detected_at"
+  "reason",
+  "attendance_checkin"
  ],
  "fields": [
   {
@@ -267,59 +261,16 @@
    "description": "How this trip was started. attendance_auto trips are created by the attendance movement monitor and are protected from legacy merge/force-complete paths."
   },
   {
-   "fieldname": "attendance_session",
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Start Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attendance_checkin",
    "fieldtype": "Link",
-   "label": "Attendance Trip Session",
-   "options": "NetraNext Attendance Trip Session",
-   "read_only": 1
-  },
-  {
-   "fieldname": "collection_state",
-   "fieldtype": "Select",
-   "label": "Collection State",
-   "options": "active\ncompleted",
-   "read_only": 1
-  },
-  {
-   "fieldname": "evidence_status",
-   "fieldtype": "Select",
-   "label": "Evidence Status",
-   "read_only": 1,
-   "options": "not_required\npending_predeparture\ncaptured_offline\nuploading\nprocessing\nneeds_retake\nsatisfied_predeparture\nlate_evidence_review\nexception_requested\nresolved_exception\npending_end"
-  },
-  {
-   "fieldname": "finance_status",
-   "fieldtype": "Select",
-   "label": "Finance Status",
-   "read_only": 1,
-   "default": "not_applicable",
-   "options": "not_applicable\nblocked_pending_evidence\nblocked_under_review\neligible\nclaim_created",
-   "description": "Draft Expense Claim is only created for attendance_auto trips once this is eligible (all required odometer evidence validated)."
-  },
-  {
-   "fieldname": "financial_distance_basis",
-   "fieldtype": "Select",
-   "label": "Financial Distance Basis",
-   "read_only": 1,
-   "options": "odometer\ngps",
-   "description": "Odometer-first: claim distance uses the validated odometer difference. GPS distance only via approved reviewer exception."
-  },
-  {
-   "fieldname": "observed_start_at",
-   "fieldtype": "Datetime",
-   "label": "Observed Start At",
-   "read_only": 1
-  },
-  {
-   "fieldname": "observed_end_at",
-   "fieldtype": "Datetime",
-   "label": "Observed End At",
-   "read_only": 1
-  },
-  {
-   "fieldname": "departure_detected_at",
-   "fieldtype": "Datetime",
-   "label": "Departure Detected At",
+   "options": "Employee Checkin",
+   "label": "Attendance Check-in",
    "read_only": 1
   }
  ],

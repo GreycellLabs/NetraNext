@@ -688,6 +688,7 @@ def get_trip_telemetry_details(trip_id=None):
         "type": "TRIP_START",
         "title": "Trip Started",
         "details": f"Started at {doc.start_location or 'Initial Location'}",
+        "reason": "Attendance-Based Automatic Start" if doc.get("tracking_source") == "attendance_auto" else None,
         "icon": "fa-play-circle"
     })
 

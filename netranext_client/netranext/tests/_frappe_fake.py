@@ -1,8 +1,7 @@
 """Minimal in-memory Frappe double for attendance-tracking unit tests.
 
 Implements just enough of the Frappe API surface used by
-netranext_client.netranext.apis.v1.attendance_tracking (and the journey
-doctype module) to exercise the state machine end-to-end without a bench:
+the attendance Journey helper and existing sync API to exercise the state machine end-to-end without a bench:
 
 - frappe.db.get_value / get_all / exists / set_value over an in-memory store
 - frappe.get_doc(dict | doctype, name) with insert()/save()/set()
@@ -69,13 +68,7 @@ class FakeDoc(dict):
         return dict(self)
 
     def _autoname(self, doctype):
-        prefix = {
-            "NetraNext Attendance Trip Session": "ATS",
-            "NetraNext Trip Odometer Requirement": "ODO-REQ",
-            "NetraNext Trip Odometer Evidence": "ODO-EVD",
-            "NetraNext Attendance Trip Event": "ATE",
-            "NetraNext Journey": "JOURNEY",
-        }.get(doctype, "DOC")
+        prefix = {"NetraNext Journey": "JOURNEY"}.get(doctype, "DOC")
         return f"{prefix}-{len(self._store.get(doctype)) + 1:05d}"
 
     def insert(self, ignore_permissions=False):
@@ -112,12 +105,24 @@ def _matches(row, filters):
         elif isinstance(expected, (list, tuple)) and expected and expected[0] == "<=":
             if actual is None or parse_dt(actual) > parse_dt(expected[1]):
                 return False
+        elif isinstance(expected, (list, tuple)) and expected and expected[0] == 'is':
+            if expected[1] == 'set' and actual in (None, ''):
+                return False
+        elif isinstance(expected, (list, tuple)) and expected and expected[0] == '!=':
+            if actual == expected[1]:
+                return False
         elif actual != expected:
             return False
     return True
 
 
 class FakeDB:
+    def sql(self, *args, **kwargs):
+        return []
+
+    def commit(self):
+        pass
+
     def __init__(self, store):
         self._store = store
 
@@ -145,6 +150,8 @@ class FakeDB:
             rows = list(reversed(rows))
         if pluck:
             return [row.get(pluck) for row in rows]
+        if kwargs.get("limit"):
+            rows = rows[:kwargs["limit"]]
         if fields:
             return [AttrDict({f: row.get(f) for f in fields}) for row in rows]
         return [AttrDict(row) for row in rows]
@@ -152,7 +159,7 @@ class FakeDB:
     def exists(self, doctype, filters=None):
         return bool(self.get_value(doctype, filters, "name"))
 
-    def set_value(self, doctype, target, *args):
+    def set_value(self, doctype, target, *args, **kwargs):
         # frappe supports both set_value(dt, name, {fields}) and the legacy
         # set_value(dt, name, field, value) 4-arg form.
         if len(args) == 2:

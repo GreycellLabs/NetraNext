@@ -330,11 +330,6 @@ api_whitelisted_methods = [
     "netranext_client.netranext.apis.v1.sync.validate_shift_reminder",
     "netranext_client.netranext.apis.v1.sync.validate_trip_reminder",
     # Attendance-based automatic trip tracking (plan §11)
-    "netranext_client.netranext.apis.v1.attendance_tracking.get_session_state",
-    "netranext_client.netranext.apis.v1.attendance_tracking.submit_events",
-    "netranext_client.netranext.apis.v1.attendance_tracking.store_odometer_evidence",
-    "netranext_client.netranext.apis.v1.attendance_tracking.get_pending_evidence_reminders",
-    "netranext_client.netranext.apis.v1.attendance_tracking.validate_evidence_reminder",
     "netranext_client.netranext.apis.v1.quick_login.create_quick_login_token",
     "netranext_client.netranext.apis.v1.quick_login.redeem_quick_login_token",
     "netranext_client.netranext.apis.v1.todo.validate_assignment_event",
@@ -446,7 +441,8 @@ after_migrate = [
     # version — custom fields must be created via create_custom_fields().
     "netranext_client.netranext.patches.create_expense_claim_fields.execute",
     # Preserve administrator navigation/role settings; create only missing records.
-    "netranext_client.netranext.patches.register_pages.execute"
+    "netranext_client.netranext.patches.register_pages.execute",
+    "netranext_client.netranext.patches.simplify_attendance_journeys.execute"
 ]
 
 
