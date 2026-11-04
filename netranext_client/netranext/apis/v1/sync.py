@@ -459,14 +459,44 @@ def store_attendance(att_data):
 
         tenant_bench_logger.info(f"Attendance stored for employee {att_data['employee_id']}", "ATTENDANCE_SYNC")
 
+        # Attendance-based automatic trip tracking (tenant setting gated in
+        # the handler itself; attendance storage must never break because
+        # of it, so every failure is contained here).
+        tracking_payload = None
+        try:
+            from netranext_client.netranext.apis.v1.attendance_tracking import (
+                handle_checkin_stored,
+                handle_checkout_stored,
+            )
+            if (att_data.get("log_type") or "").upper() == "IN":
+                tracking_payload = handle_checkin_stored(att_data, checkin_doc.name)
+            else:
+                tracking_payload = handle_checkout_stored(att_data, checkin_doc.name)
+            if tracking_payload:
+                frappe.db.commit()
+        except Exception as tracking_err:
+            tenant_bench_logger.error(
+                f"Attendance trip tracking hook failed (attendance stored anyway): "
+                f"{tracking_err}",
+                "ATTENDANCE_SYNC",
+            )
+            frappe.log_error(
+                frappe.get_traceback(),
+                "Attendance Trip Tracking Hook Exception",
+            )
+
+        response_data = {
+            "checkin_id": checkin_doc.name,
+            "employee": att_data["employee_id"],
+            "time": att_data["time"],
+            "log_type": att_data["log_type"]
+        }
+        if tracking_payload:
+            response_data["attendance_tracking"] = tracking_payload
+
         return create_success_response(
             message="Attendance record stored successfully",
-            data={
-                "checkin_id": checkin_doc.name,
-                "employee": att_data["employee_id"],
-                "time": att_data["time"],
-                "log_type": att_data["log_type"]
-            }
+            data=response_data
         )
 
     except Exception as e:
@@ -594,6 +624,54 @@ def _validate_odometer_sources(journey_data):
         )
 
 
+def _validate_attendance_auto_identity(journey_data):
+    """Server-side identity check for attendance_auto journeys.
+
+    A payload claiming to be an automatic trip must trace to a tracking
+    session whose reserved_journey_id matches the journey id it syncs.
+    This is what stops anything outside the validated movement flow from
+    creating or mutating an automatic trip.
+
+    Returns the session docname; raises ValidationException otherwise.
+    """
+    journey_id = journey_data.get("journey_id")
+    if not journey_id:
+        raise ValidationException(
+            "Automatic journeys must carry their reserved journey id."
+        )
+    session = frappe.db.get_value(
+        "NetraNext Attendance Trip Session",
+        {"reserved_journey_id": journey_id},
+        ["name", "status", "journey", "movement_confirmed_at"],
+        as_dict=True,
+    )
+    if not session:
+        raise ValidationException(
+            "Automatic trip rejected: journey id does not match any "
+            "attendance tracking session."
+        )
+    existing = frappe.db.get_value("NetraNext Journey", {
+        "flutter_journey_id": journey_id,
+        "employee": journey_data["employee_id"],
+    }, "name")
+    if existing:
+        # Continuation sync of the known automatic journey (points/status).
+        if session.journey and session.journey != existing:
+            raise ValidationException(
+                "Automatic trip rejected: session is linked to a different journey."
+            )
+        return session.name
+    # Creating a NEW automatic journey from a sync: only legitimate while
+    # the session actually confirmed movement (mobile may have been offline
+    # at confirmation time - the event replay carries the same identity).
+    if not session.movement_confirmed_at:
+        raise ValidationException(
+            "Automatic trip rejected: movement was never confirmed for "
+            "this session."
+        )
+    return session.name
+
+
 @frappe.whitelist(allow_guest=True)
 def store_journey(journey_data):
     """
@@ -633,6 +711,15 @@ def store_journey(journey_data):
         # requests never pay that cost. It applies to API requests as
         # well — nothing below this point can bypass it.
         _validate_odometer_sources(journey_data)
+
+        # Attendance-auto journeys: verify identity against the tracking
+        # session BEFORE any lookup/insert, and route this sync exclusively
+        # through the reserved-id path (legacy merge/force-complete
+        # fallbacks must never touch automatic trips).
+        auto_journey = (journey_data.get("tracking_source") or "") == "attendance_auto"
+        auto_session_name = None
+        if auto_journey:
+            auto_session_name = _validate_attendance_auto_identity(journey_data)
 
         # Derive journey_date from start_time if not provided
         start_time_raw = journey_data.get("start_time")
@@ -685,6 +772,14 @@ def store_journey(journey_data):
             # 2. Journey name matches the trip_id
             if trip_id and frappe.db.exists("NetraNext Journey", trip_id):
                 return trip_id
+
+            # Attendance-auto journeys resolve ONLY through their reserved
+            # journey id (branch 1). The legacy fallbacks below exist to
+            # merge older clients' anonymous heartbeats - applying them to
+            # an automatic trip could merge it into an unrelated manual
+            # trip or let a stale sync complete it.
+            if auto_journey:
+                return None
 
             # 3. Live "In Progress" journey for this employee — only when this
             # sync is itself an "In Progress" heartbeat or comes from a legacy
@@ -793,6 +888,20 @@ def store_journey(journey_data):
             if field in field_names and value is not None:
                 doc_data[field] = value
 
+        # Attendance-auto identity fields (server-validated above). Never
+        # taken from the raw payload without the session check, and finance
+        # state stays exclusively under the state machine's control.
+        if auto_journey and auto_session_name:
+            doc_data["tracking_source"] = "attendance_auto"
+            doc_data["attendance_session"] = auto_session_name
+            doc_data["collection_state"] = "active" if is_in_progress else "completed"
+            if journey_data.get("observed_start_at") and "observed_start_at" in field_names:
+                doc_data["observed_start_at"] = journey_data.get("observed_start_at")
+            if journey_data.get("observed_end_at") and "observed_end_at" in field_names:
+                doc_data["observed_end_at"] = journey_data.get("observed_end_at")
+            if journey_data.get("departure_detected_at") and "departure_detected_at" in field_names:
+                doc_data["departure_detected_at"] = journey_data.get("departure_detected_at")
+
         # Final re-check right before writing: the photo downloads above can
         # take many seconds — a concurrent sync may have committed this journey
         # in the meantime.
@@ -828,12 +937,20 @@ def store_journey(journey_data):
             if lock_acquired:
                 frappe.cache().delete_value(lock_key)
 
-        # If this journey is "In Progress", ensure no other journeys for this employee are "In Progress"
-        if doc_data.get("status") == "In Progress":
+        # If this journey is "In Progress", ensure no other journeys for this
+        # employee are "In Progress". Two protections for automatic trips:
+        # 1. The auto path never force-completes anything (a heartbeat sync
+        #    of an automatic trip must not end a manual trip the employee
+        #    deliberately started).
+        # 2. When a manual/scheduled trip syncs, automatic trips are never
+        #    victims - the attendance monitor owns them and only checkout
+        #    (or the monitor itself) may end them.
+        if doc_data.get("status") == "In Progress" and not auto_journey:
             frappe.db.sql("""
                 UPDATE `tabNetraNext Journey`
                 SET status = 'Completed', end_time = %s
                 WHERE employee = %s AND status = 'In Progress' AND name != %s
+                  AND IFNULL(tracking_source, '') != 'attendance_auto'
             """, (frappe.utils.now_datetime(), doc_data["employee"], journey_doc.name))
 
         # Stray cleanup: past concurrent-sync races may have left duplicate

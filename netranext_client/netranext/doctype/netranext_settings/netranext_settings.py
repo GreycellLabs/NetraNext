@@ -343,6 +343,7 @@ def get_settings():
                 "enable_face_verification": int(getattr(doc, "enable_face_verification", 1) or 0),
                 "enable_odometer_reading": int(getattr(doc, "enable_odometer_reading", 0) or 0),
                 "allow_manual_odometer_edit": int(getattr(doc, "allow_manual_odometer_edit", 1) or 0),
+                "enable_auto_attendance_trip_tracking": int(getattr(doc, "enable_auto_attendance_trip_tracking", 0) or 0),
             }
         }
     except Exception as e:

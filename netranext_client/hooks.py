@@ -213,6 +213,12 @@ doc_events = {
 		"after_insert": "netranext_client.netranext.events.todo_assignment.on_todo_after_insert",
 		"on_update": "netranext_client.netranext.events.todo_assignment.on_todo_update",
 		"on_trash": "netranext_client.netranext.events.todo_assignment.on_todo_trash"
+	},
+	# Finance gate for attendance-based automatic trips (plan §13): a claim
+	# covering an automatic trip can only be submitted after every required
+	# odometer evidence is validated.
+	"Expense Claim": {
+		"on_submit": "netranext_client.netranext.doctype.netranext_journey.netranext_journey.validate_expense_claim_evidence"
 	}
 }
 
@@ -323,6 +329,12 @@ api_whitelisted_methods = [
     "netranext_client.netranext.apis.v1.sync.get_upcoming_shift_reminders",
     "netranext_client.netranext.apis.v1.sync.validate_shift_reminder",
     "netranext_client.netranext.apis.v1.sync.validate_trip_reminder",
+    # Attendance-based automatic trip tracking (plan §11)
+    "netranext_client.netranext.apis.v1.attendance_tracking.get_session_state",
+    "netranext_client.netranext.apis.v1.attendance_tracking.submit_events",
+    "netranext_client.netranext.apis.v1.attendance_tracking.store_odometer_evidence",
+    "netranext_client.netranext.apis.v1.attendance_tracking.get_pending_evidence_reminders",
+    "netranext_client.netranext.apis.v1.attendance_tracking.validate_evidence_reminder",
     "netranext_client.netranext.apis.v1.quick_login.create_quick_login_token",
     "netranext_client.netranext.apis.v1.quick_login.redeem_quick_login_token",
     "netranext_client.netranext.apis.v1.todo.validate_assignment_event",

@@ -1,0 +1,324 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:ATS-{#####}",
+ "creation": "2026-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "session_id",
+  "employee",
+  "user_id",
+  "status_section",
+  "status",
+  "monitor_state",
+  "section_checkin",
+  "checkin_name",
+  "checkin_time",
+  "checkin_latitude",
+  "checkin_longitude",
+  "checkin_accuracy",
+  "auto_start_snapshot",
+  "odometer_required",
+  "section_journey",
+  "reserved_journey_id",
+  "journey",
+  "movement_confirmed_at",
+  "observed_start_at",
+  "observed_end_at",
+  "departure_detected_at",
+  "ownership_conflict",
+  "conflict_reason",
+  "section_checkout",
+  "checkout_name",
+  "checkout_time",
+  "shift_ends_at",
+  "section_reminders",
+  "reminders_sent_start",
+  "reminders_sent_end",
+  "reminders_sent_checkout",
+  "last_reminder_at",
+  "section_evidence",
+  "evidence_state",
+  "section_offline",
+  "offline_lease_until",
+  "last_event_seq",
+  "cancellation_reason",
+  "metadata"
+ ],
+ "fields": [
+  {
+   "fieldname": "session_id",
+   "fieldtype": "Data",
+   "label": "Session ID",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fieldname": "user_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "User ID"
+  },
+  {
+   "fieldname": "status_section",
+   "fieldtype": "Section Break",
+   "label": "State"
+  },
+  {
+   "default": "monitoring",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "monitoring\ntrip_active\ncompleted\ncancelled\nexpired"
+  },
+  {
+   "default": "awaiting_movement",
+   "fieldname": "monitor_state",
+   "fieldtype": "Select",
+   "label": "Monitor State",
+   "options": "idle\nawaiting_movement\nmovement_detected\nmovement_confirmed\nsuspended_conflict\nended"
+  },
+  {
+   "fieldname": "section_checkin",
+   "fieldtype": "Section Break",
+   "label": "Check-in"
+  },
+  {
+   "fieldname": "checkin_name",
+   "fieldtype": "Link",
+   "label": "Employee Checkin",
+   "options": "Employee Checkin"
+  },
+  {
+   "fieldname": "checkin_time",
+   "fieldtype": "Datetime",
+   "label": "Check-in Time"
+  },
+  {
+   "fieldname": "checkin_latitude",
+   "fieldtype": "Float",
+   "label": "Check-in Latitude",
+   "precision": "8"
+  },
+  {
+   "fieldname": "checkin_longitude",
+   "fieldtype": "Float",
+   "label": "Check-in Longitude",
+   "precision": "8"
+  },
+  {
+   "fieldname": "checkin_accuracy",
+   "fieldtype": "Float",
+   "label": "Check-in Accuracy (m)"
+  },
+  {
+   "default": "0",
+   "description": "Snapshot of the tenant setting at check-in time. When unchecked, the session only records events and never auto-starts a trip.",
+   "fieldname": "auto_start_snapshot",
+   "fieldtype": "Check",
+   "label": "Auto Start Enabled (snapshot)"
+  },
+  {
+   "default": "0",
+   "description": "Whether odometer evidence requirements exist for this session (tenant setting snapshot).",
+   "fieldname": "odometer_required",
+   "fieldtype": "Check",
+   "label": "Odometer Required (snapshot)"
+  },
+  {
+   "fieldname": "section_journey",
+   "fieldtype": "Section Break",
+   "label": "Journey"
+  },
+  {
+   "description": "Pre-allocated journey identity. Becomes the journey's flutter_journey_id when movement is confirmed, so offline replays reconcile idempotently.",
+   "fieldname": "reserved_journey_id",
+   "fieldtype": "Data",
+   "label": "Reserved Journey ID",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "journey",
+   "fieldtype": "Link",
+   "label": "Journey",
+   "options": "NetraNext Journey"
+  },
+  {
+   "fieldname": "movement_confirmed_at",
+   "fieldtype": "Datetime",
+   "label": "Movement Confirmed At"
+  },
+  {
+   "fieldname": "observed_start_at",
+   "fieldtype": "Datetime",
+   "label": "Observed Start At"
+  },
+  {
+   "fieldname": "observed_end_at",
+   "fieldtype": "Datetime",
+   "label": "Observed End At"
+  },
+  {
+   "fieldname": "departure_detected_at",
+   "fieldtype": "Datetime",
+   "label": "Departure Detected At"
+  },
+  {
+   "default": "0",
+   "description": "Set when genuine movement was detected but a manual or scheduled trip was already active. No second trip is ever created.",
+   "fieldname": "ownership_conflict",
+   "fieldtype": "Check",
+   "label": "Ownership Conflict"
+  },
+  {
+   "fieldname": "conflict_reason",
+   "fieldtype": "Small Text",
+   "label": "Conflict Reason"
+  },
+  {
+   "fieldname": "section_checkout",
+   "fieldtype": "Section Break",
+   "label": "Check-out"
+  },
+  {
+   "fieldname": "checkout_name",
+   "fieldtype": "Link",
+   "label": "Checkout Employee Checkin",
+   "options": "Employee Checkin"
+  },
+  {
+   "fieldname": "checkout_time",
+   "fieldtype": "Datetime",
+   "label": "Check-out Time"
+  },
+  {
+   "description": "End of the employee's shift. Checkout reminders start one hour after this time and repeat hourly until checkout (monitoring itself is never auto-stopped).",
+   "fieldname": "shift_ends_at",
+   "fieldtype": "Datetime",
+   "label": "Shift Ends At"
+  },
+  {
+   "fieldname": "section_reminders",
+   "fieldtype": "Section Break",
+   "label": "Reminders"
+  },
+  {
+   "default": "0",
+   "fieldname": "reminders_sent_start",
+   "fieldtype": "Int",
+   "label": "Start Odometer Reminders Sent",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "reminders_sent_end",
+   "fieldtype": "Int",
+   "label": "End Odometer Reminders Sent",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "reminders_sent_checkout",
+   "fieldtype": "Int",
+   "label": "Checkout Reminders Sent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_reminder_at",
+   "fieldtype": "Datetime",
+   "label": "Last Reminder At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_evidence",
+   "fieldtype": "Section Break",
+   "label": "Evidence"
+  },
+  {
+   "default": "not_required",
+   "description": "Aggregated dashboard-facing evidence state for this session.",
+   "fieldname": "evidence_state",
+   "fieldtype": "Select",
+   "label": "Evidence State",
+   "options": "not_required\npending_predeparture\ncaptured_offline\nuploading\nprocessing\nneeds_retake\nsatisfied_predeparture\nlate_evidence_review\nexception_requested\nresolved_exception\npending_end"
+  },
+  {
+   "fieldname": "section_offline",
+   "fieldtype": "Section Break",
+   "label": "Offline / Events"
+  },
+  {
+   "description": "Bounded offline lease: events with client timestamps before this deadline are reconciled when connectivity returns; older ones are recorded but do not mutate state.",
+   "fieldname": "offline_lease_until",
+   "fieldtype": "Datetime",
+   "label": "Offline Lease Until"
+  },
+  {
+   "default": "0",
+   "description": "Monotonic sequence of the last applied client event (ordering guard for offline replays).",
+   "fieldname": "last_event_seq",
+   "fieldtype": "Int",
+   "label": "Last Event Seq",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cancellation_reason",
+   "fieldtype": "Small Text",
+   "label": "Cancellation Reason"
+  },
+  {
+   "fieldname": "metadata",
+   "fieldtype": "Code",
+   "label": "Metadata",
+   "options": "JSON"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "NetraNext",
+ "name": "NetraNext Attendance Trip Session",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "HR Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "session_id"
+}

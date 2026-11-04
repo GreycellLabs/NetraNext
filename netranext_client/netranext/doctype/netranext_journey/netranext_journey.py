@@ -5,6 +5,37 @@ import json
 import re
 
 
+def _auto_trip_finance_ready(journey):
+	"""Finance gate for attendance-auto trips (plan section 13).
+
+	Manual/scheduled trips are unaffected. An attendance_auto trip only
+	releases its Draft Expense Claim when finance_status is 'eligible'
+	(every required odometer evidence validated) or 'claim_created'
+	(idempotent upsert of an already released claim).
+	"""
+	if (getattr(journey, "tracking_source", None) or "") != "attendance_auto":
+		return True
+	finance_status = getattr(journey, "finance_status", None) or ""
+	return finance_status in ("eligible", "claim_created")
+
+
+def create_expense_claim_for_journey(journey):
+	"""Module-level entry point used by the attendance-tracking state machine.
+
+	Applies the same finance gate as on_update, so evidence completing after
+	the journey's last save can release the claim safely.
+	"""
+	if journey.status != 'Completed':
+		return
+	if not _auto_trip_finance_ready(journey):
+		frappe.logger().info(
+			f"Expense Claim deferred for {journey.name}: finance_status="
+			f"{getattr(journey, 'finance_status', None)}"
+		)
+		return
+	journey.create_expense_claim()
+
+
 class NetraNextJourney(Document):
 	def validate(self):
 		"""Validate journey data"""
@@ -67,6 +98,8 @@ class NetraNextJourney(Document):
 	def on_update(self):
 		"""Check status change to generate expense claim"""
 		if self.status == 'Completed':
+			if not _auto_trip_finance_ready(self):
+				return
 			self.create_expense_claim()
 
 	def create_expense_claim(self):
@@ -78,13 +111,27 @@ class NetraNextJourney(Document):
 		appending or updating this trip's expense row. A new claim is created
 		only when there is no reusable Draft. Submitted claims are never
 		duplicated for the same trip.
+
+		Attendance-auto trips carry an extra finance gate (plan section 13):
+		the claim is only generated once every required odometer evidence is
+		validated, and the distance basis is odometer-first (GPS distance
+		only via an approved reviewer exception).
 		"""
+		if not _auto_trip_finance_ready(self):
+			return
+
 		settings = frappe.get_single("NetraNext Settings")
 		expense_rate = float(settings.expense_rate or 0.0)
 		expense_type = settings.expense_claim_type or frappe.db.get_value("Expense Claim Type", {"expense_type": ["like", "%Travel%"]}, "name") or frappe.db.get_value("Expense Claim Type", {}, "name")
 
 		# Calculate effective distance (either distance_km or calculated_odometer_distance)
-		dist = float(self.distance_km or getattr(self, "calculated_odometer_distance", 0.0) or 0.0)
+		if (self.tracking_source or "") == "attendance_auto" and (self.financial_distance_basis or "") == "odometer":
+			# Odometer-first: only the validated odometer difference is
+			# claimable for automatic trips (GPS distance requires a
+			# reviewer-approved exception, which flips the basis to 'gps').
+			dist = float(getattr(self, "calculated_odometer_distance", 0.0) or 0.0)
+		else:
+			dist = float(self.distance_km or getattr(self, "calculated_odometer_distance", 0.0) or 0.0)
 
 		# Zero-distance trips never generate a claim; without a configured rate
 		# the claim amount would always be zero, so skip that too.
@@ -316,3 +363,29 @@ class NetraNextJourney(Document):
 		desc = strip_html(row.description or "")
 		match = re.search(r"Journey ([^:]+):", desc)
 		return match.group(1).strip() if match else None
+
+
+def validate_expense_claim_evidence(doc, method=None):
+	"""doc_events hook (Expense Claim on_submit): evidence must be complete.
+
+	A human may submit a Draft from the desk before an automatic trip's
+	odometer evidence was validated. Blocking here keeps the approved
+	"no claim until all required evidence and validations are complete"
+	rule enforced at every entry point. Manual/scheduled trips are exempt.
+	"""
+	for row in doc.get("expenses") or []:
+		trip = getattr(row, "custom_reference_trip", None)
+		if not trip or not frappe.db.exists("NetraNext Journey", trip):
+			continue
+		journey = frappe.db.get_value(
+			"NetraNext Journey", trip,
+			["tracking_source", "finance_status"], as_dict=True,
+		)
+		if (journey.tracking_source or "") != "attendance_auto":
+			continue
+		if (journey.finance_status or "") not in ("eligible", "claim_created"):
+			frappe.throw(
+				f"Expense Claim cannot be submitted: automatic trip {trip} still has "
+				f"incomplete odometer evidence (finance status: "
+				f"{journey.finance_status or 'pending'})."
+			)

@@ -18,6 +18,7 @@
   "enable_face_verification",
   "enable_odometer_reading",
   "allow_manual_odometer_edit",
+  "enable_auto_attendance_trip_tracking",
   "offline_timeout_minutes",
   "api_credentials_section",
   "central_server_url",
@@ -91,6 +92,13 @@
    "fieldname": "allow_manual_odometer_edit",
    "fieldtype": "Check",
    "label": "Allow Manual Odometer Reading Edit"
+  },
+  {
+   "default": "0",
+   "description": "When checked, a successful attendance check-in starts GPS movement monitoring. A trip is started automatically only after genuine movement beyond ~100 meters is validated away from the check-in point. Odometer photos (when odometer reading is enabled) are requested separately and never block check-in. When unchecked, attendance and trips work exactly as before.",
+   "fieldname": "enable_auto_attendance_trip_tracking",
+   "fieldtype": "Check",
+   "label": "Enable Automatic Trip Tracking Based on Attendance"
   },
   {
    "fieldname": "column_break_top",
