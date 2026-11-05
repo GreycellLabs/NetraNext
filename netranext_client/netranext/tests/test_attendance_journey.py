@@ -152,6 +152,9 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertTrue(self.context()['pending_start'])
         self.assertIsNone(self.journey().get('start_odometer'))
         self.assertEqual(self.context()['late_start_photo'],'/files/photo.jpg')
+        context = result['data']['context']
+        self.assertTrue(context['late_start_photo_received'])
+        self.assertNotIn('late_start_photo', context)
 
     def test_manual_edit_setting_is_enforced(self):
         self.checkin();self.store.settings['allow_manual_odometer_edit']=0

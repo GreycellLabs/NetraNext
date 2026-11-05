@@ -3,6 +3,7 @@ NetraNext Dashboard API
 Queries local database for dashboard data
 """
 import frappe
+from netranext_client.netranext.utils.trip_permissions import require_reader, scoped_filters
 from datetime import datetime
 
 
@@ -34,13 +35,14 @@ def _storage_dt_iso(value):
         return value.isoformat() + _system_tz_offset_suffix()
     return str(value) if value else ""
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist()
 def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100,
                      journey_page=1, journey_employee=None, attendance_page=1, attendance_employee=None,
                      ignore_dates=None, status=None, user_id=None):
     """
     Fetch dashboard data from local database
     """
+    require_reader()
     try:
         # Check if ignore_dates is passed
         is_ignore_dates = False
@@ -104,32 +106,25 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
         journeys = []
         try:
             if frappe.db.exists("DocType", "NetraNext Journey"):
-                conditions = []
-                params = []
+                filters = scoped_filters()
                 if not is_ignore_dates:
-                    conditions.append("DATE(start_time) >= %s AND DATE(start_time) <= %s")
-                    params.extend([db_date_from, db_date_to])
+                    filters.extend([["start_time", ">=", f"{db_date_from} 00:00:00"],
+                                    ["start_time", "<=", f"{db_date_to} 23:59:59"]])
                 if status:
-                    conditions.append("status = %s")
-                    params.append(status)
+                    filters.append(["status", "=", status])
+                # Optional filters can narrow visibility, never widen it.
+                for requested_employee in (employee_id, journey_employee):
+                    if requested_employee:
+                        filters.append(["employee", "=", requested_employee])
                 if user_id:
-                    conditions.append(
-                        "(user_id = %s OR employee IN (SELECT name FROM `tabEmployee` WHERE user_id = %s))"
-                    )
-                    params.extend([user_id, user_id])
-
-                where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-                journey_sql = f"""
-                    SELECT name, employee, user_id, start_time as journey_date, start_time, end_time,
-                           start_location, end_location, distance_km as total_distance, status,
-                           raw_gps_data, modified
-                    FROM `tabNetraNext Journey`
-                    {where_sql}
-                    ORDER BY creation DESC
-                    LIMIT %s
-                """
-                params.append(int(limit))
-                journey_records = frappe.db.sql(journey_sql, tuple(params), as_dict=True)
+                    employee_ids = frappe.get_all("Employee", filters={"user_id": user_id}, pluck="name")
+                    filters.append(["employee", "in", employee_ids] if employee_ids else ["name", "=", ""])
+                journey_records = frappe.get_list(
+                    "NetraNext Journey", filters=filters,
+                    fields=["name", "employee", "user_id", "start_time as journey_date", "start_time", "end_time",
+                            "start_location", "end_location", "distance_km as total_distance", "status",
+                            "raw_gps_data", "modified"],
+                    order_by="creation desc", limit_page_length=int(limit))
                 
                 import json
                 for journey in journey_records:

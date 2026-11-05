@@ -189,6 +189,13 @@ after_install = "netranext_client.netranext.patches.register_pages.execute"
 # 	"Event": "frappe.desk.doctype.event.event.has_permission",
 # }
 
+permission_query_conditions = {
+    "NetraNext Journey": "netranext_client.netranext.utils.trip_permissions.get_permission_query_conditions",
+}
+has_permission = {
+    "NetraNext Journey": "netranext_client.netranext.utils.trip_permissions.has_permission",
+}
+
 # DocType Class
 # ---------------
 # Override standard doctype classes

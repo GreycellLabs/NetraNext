@@ -4,6 +4,7 @@ import gzip
 import frappe
 from frappe import _
 from datetime import datetime, timedelta, timezone
+from netranext_client.netranext.utils.trip_permissions import scoped_filters, check_trip_read
 
 
 def get_context(context):
@@ -451,7 +452,7 @@ def get_all_trips_summary(employee=None, status=None, date=None, search=None, li
     if not frappe.db.exists("DocType", "NetraNext Journey"):
         return []
 
-    filters = []
+    filters = scoped_filters()
     or_filters = []
     if employee and str(employee).strip():
         # Employee filter accepts an ID or a display name; it resolves to the
@@ -489,7 +490,7 @@ def get_all_trips_summary(employee=None, status=None, date=None, search=None, li
 
     limit = int(limit) if limit else 100
 
-    journeys = frappe.get_all(
+    journeys = frappe.get_list(
         "NetraNext Journey",
         filters=filters if filters else None,
         or_filters=or_filters if or_filters else None,
@@ -645,6 +646,7 @@ def get_trip_telemetry_details(trip_id=None):
             frappe.throw(_("NetraNext Journey {0} not found").format(trip_id))
 
     doc = frappe.get_doc("NetraNext Journey", journey_name)
+    check_trip_read(doc)
 
     # Parse raw GPS data / coordinates
     raw_gps = []

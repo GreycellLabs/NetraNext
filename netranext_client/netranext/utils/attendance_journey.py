@@ -59,6 +59,7 @@ def payload(checkin_id, context):
     # Photos remain attached files; the dashboard only needs their status.
     result = {k: v for k, v in dict(context, checkin_id=checkin_id, enabled=enabled()).items()
               if k not in ('start_photo', 'late_start_photo')}
+    result['late_start_photo_received'] = bool(context.get('late_start_photo'))
     for key in ('started_at', 'end_time'):
         if result.get(key):
             dt = get_datetime(result[key])

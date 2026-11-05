@@ -1,5 +1,6 @@
 import frappe
 from frappe.utils import flt
+from netranext_client.netranext.utils.trip_permissions import scoped_filters
 
 
 def get_context(context):
@@ -32,7 +33,10 @@ def get_expense_claims(employee=None, limit=500):
         "ec.custom_reference_trip IS NOT NULL",
         "ec.custom_reference_trip != ''",
     ]
-    values = []
+    visible_trips = frappe.get_list("NetraNext Journey", filters=scoped_filters(),
+                                    pluck="name", limit_page_length=0)
+    conditions.append("j.name IN %s" if visible_trips else "1=0")
+    values = [tuple(visible_trips)] if visible_trips else []
     if employee:
         conditions.append("ec.employee = %s")
         values.append(employee)

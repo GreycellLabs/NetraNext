@@ -1239,7 +1239,7 @@ def get_employee_checkins(employee_id=None, from_date=None, to_date=None, limit=
 
 
 @frappe.whitelist(allow_guest=True)
-def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
+def get_journeys(employee_id=None, user_id=None, limit=50, status=None, requester_user=None):
     """
     Get NetraNext Journey records from the tenant bench.
 
@@ -1254,6 +1254,18 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
     """
     try:
         validate_sync_request()
+        if requester_user is not None:
+            from netranext_client.netranext.utils.trip_permissions import integration_reader, is_trip_manager, scoped_filters, get_trip_list
+            integration_reader(requester_user)
+            if not is_trip_manager(requester_user):
+                # Caller filters cannot select a different employee's assignments.
+                if user_id and user_id != requester_user:
+                    frappe.throw("You are not permitted to access this user's trips.", frappe.PermissionError)
+                own_employee = frappe.db.get_value('Employee', {'user_id': requester_user}, 'name')
+                if employee_id and employee_id != own_employee:
+                    frappe.throw("You are not permitted to access this employee's trips.", frappe.PermissionError)
+                user_id = requester_user
+                employee_id = own_employee
 
         if not employee_id and user_id:
             employee_id = frappe.db.get_value('Employee', {'user_id': user_id}, 'name')
@@ -1356,9 +1368,15 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None):
             filters = {'employee': employee_id}
             if status:
                 filters['status'] = status
-            for row in frappe.get_all('NetraNext Journey', filters=filters,
-                    fields=['name'], order_by='start_time desc', limit_page_length=min(int(limit), 100)):
-                detail = get_journey_details(trip_id=row.name)
+            query = frappe.get_all
+            query_options = {}
+            if requester_user is not None:
+                filters = scoped_filters([[key, '=', value] for key, value in filters.items()], requester_user)
+                query = get_trip_list
+                query_options['user'] = requester_user
+            for row in query('NetraNext Journey', filters=filters,
+                    fields=['name'], order_by='start_time desc', limit_page_length=min(int(limit), 100), **query_options):
+                detail = get_journey_details(trip_id=row.name, requester_user=requester_user)
                 if detail.get('status') == 'success':
                     journeys.append(detail['data'])
 
@@ -1403,7 +1421,7 @@ def _journey_points(raw_points, start_time):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_journey_details(trip_id=None, journey_id=None):
+def get_journey_details(trip_id=None, journey_id=None, requester_user=None):
     """
     Get journey details from the tenant bench.
 
@@ -1416,6 +1434,9 @@ def get_journey_details(trip_id=None, journey_id=None):
     """
     try:
         validate_sync_request()
+        if requester_user is not None:
+            from netranext_client.netranext.utils.trip_permissions import integration_reader
+            integration_reader(requester_user)
 
         if not trip_id and not journey_id:
             return create_error_response("trip_id or journey_id is required")
@@ -1454,6 +1475,10 @@ def get_journey_details(trip_id=None, journey_id=None):
 
         if not trip:
             return create_error_response("Journey not found")
+
+        if requester_user is not None:
+            from netranext_client.netranext.utils.trip_permissions import check_trip_read
+            check_trip_read(trip, requester_user)
 
         # Parse metadata
         metadata = {}
@@ -1528,7 +1553,7 @@ def get_journey_details(trip_id=None, journey_id=None):
 
 
 @frappe.whitelist(allow_guest=True)
-def delete_journey(trip_id=None, journey_id=None):
+def delete_journey(trip_id=None, journey_id=None, requester_user=None):
     """
     Delete a journey from the tenant bench.
 
@@ -1576,6 +1601,11 @@ def delete_journey(trip_id=None, journey_id=None):
 
         if not target_trip_id or not frappe.db.exists("NetraNext Journey", target_trip_id):
             return create_error_response("Journey not found")
+
+        if requester_user is not None:
+            from netranext_client.netranext.utils.trip_permissions import integration_reader, check_trip_read
+            integration_reader(requester_user)
+            check_trip_read(frappe.get_doc("NetraNext Journey", target_trip_id), requester_user)
 
         # Delete trip
         frappe.delete_doc("NetraNext Journey", target_trip_id, ignore_permissions=True)
@@ -1800,7 +1830,7 @@ def update_scheduled_trip_status(trip_id=None, status=None):
         return handle_api_exception(e, "JOURNEY_SYNC")
 
 @frappe.whitelist(allow_guest=True)
-def extend_trip(trip_id=None, reason=None, new_destination=None):
+def extend_trip(trip_id=None, reason=None, new_destination=None, requester_user=None):
     """
     Extend an active trip with a new destination and reason.
     Logs the extension to the trip's timeline and metadata.
@@ -1828,6 +1858,13 @@ def extend_trip(trip_id=None, reason=None, new_destination=None):
                 raise ResourceNotFoundException(f"Trip {trip_id} not found")
 
         doc = frappe.get_doc(doctype, trip_id)
+        if requester_user is not None:
+            from netranext_client.netranext.utils.trip_permissions import integration_reader, check_trip_read
+            integration_reader(requester_user)
+            if doctype == "NetraNext Journey":
+                check_trip_read(doc, requester_user)
+            else:
+                frappe.has_permission(doctype, "read", doc=doc, user=requester_user, throw=True)
 
         # 1. Update Destination if provided (only for Journey, as Scheduled Trip is a Link field)
         if new_destination:

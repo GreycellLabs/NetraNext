@@ -63,6 +63,13 @@ def handle_api_exception(exception: Exception, module: str = "TENANT_BENCH_API")
     Returns:
         dict: Formatted error response
     """
+    # Permission denials must remain denials across the mobile proxy, rather
+    # than being classified as validation errors or internal failures.
+    if getattr(exception, "http_status_code", None) == 403:
+        return create_error_response(
+            message="You are not permitted to access this trip.",
+            error_code="PERMISSION_DENIED", status_code=403)
+
     # Log the exception
     if isinstance(exception, TenantBenchException):
         tenant_bench_logger.error(
