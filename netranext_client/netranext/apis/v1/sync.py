@@ -459,6 +459,10 @@ def store_attendance(att_data):
 
         tenant_bench_logger.info(f"Attendance stored for employee {att_data['employee_id']}", "ATTENDANCE_SYNC")
 
+        # Journey persistence commits/rolls back independently. Attendance
+        # must survive a failed automatic start or completion.
+        frappe.db.commit()
+
         # Attendance-based automatic trip tracking (tenant setting gated in
         # the handler itself; attendance storage must never break because
         # of it, so every failure is contained here).

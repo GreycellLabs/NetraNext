@@ -83,11 +83,14 @@ class AttendanceJourneyTests(unittest.TestCase):
     def journey(self):
         return self.store.get('NetraNext Journey')[0]
 
-    def test_checkin_only_arms_without_creating_a_trip(self):
+    def test_checkin_immediately_starts_existing_journey_at_checkin_location(self):
         context=self.checkin()
         self.assertTrue(context['pending_start'])
         self.assertEqual(context['checkin_id'],'IN1')
-        self.assertEqual(self.store.get('NetraNext Journey'),[])
+        self.assertEqual(len(self.store.get('NetraNext Journey')),1)
+        self.assertEqual(self.journey()['status'],'In Progress')
+        self.assertEqual(self.journey()['start_time'],'2026-11-04 09:00:00')
+        self.assertEqual(self.journey()['start_location'],'12.0, 77.0')
 
     def test_disabled_setting_changes_nothing(self):
         self.store.settings['enable_auto_attendance_trip_tracking']=0
@@ -117,25 +120,26 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(first['checkin_id'],second['checkin_id'])
         self.assertEqual(first['journey_id'],second['journey_id'])
 
-    def test_invalid_movement_cannot_start(self):
+    def test_empty_movement_confirmation_is_idempotent_and_never_delays_start(self):
         self.checkin()
         result=self.api.store_journey(dict(employee_id=self.employee,attendance_action='confirm',attendance_checkin='IN1',fixes=[]))
-        self.assertEqual(result['status'],'error')
-        self.assertEqual(self.store.get('NetraNext Journey'),[])
+        self.assertEqual(result['status'],'success')
+        self.assertEqual(len(self.store.get('NetraNext Journey')),1)
 
     def test_active_manual_and_scheduled_trips_are_not_overwritten(self):
         for source in ('manual','scheduled'):
             with self.subTest(source=source):
                 self.store.tables['NetraNext Journey']=[]
-                self.checkin('IN'+source)
+                self.store.tables['Employee Checkin']=[]
                 self.frappe.get_doc(dict(doctype='NetraNext Journey',name='EXISTING',employee=self.employee,
                     flutter_journey_id='manual1',tracking_source=source,status='In Progress')).insert()
-                result=self.api.store_journey(dict(employee_id=self.employee,attendance_action='confirm',
-                    attendance_checkin='IN'+source,fixes=[]))
-                self.assertEqual(result['status'],'error')
+                context=self.checkin('IN'+source)
+                self.assertIn('already in progress',context['start_error'])
+                self.assertEqual(len(self.store.get('NetraNext Journey')),1)
+                self.assertEqual(self.journey()['tracking_source'],source)
                 self.assertEqual(self.journey()['status'],'In Progress')
 
-    def test_start_photo_is_deferred_and_predeparture_reading_is_reused(self):
+    def test_dashboard_start_photo_updates_the_already_active_journey(self):
         self.checkin()
         result=self.api.store_journey(dict(employee_id=self.employee,attendance_action='start_photo',attendance_checkin='IN1',
             start_odometer=100,start_odometer_photo='image',start_odometer_source='manual'))
@@ -144,17 +148,55 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(self.confirm()['status'],'success')
         self.assertEqual(self.journey()['start_odometer'],100.)
 
-    def test_late_start_photo_stays_pending_and_does_not_populate_start(self):
-        self.checkin();self.confirm()
+    def test_start_photo_during_trip_satisfies_requirement_on_same_journey(self):
+        self.checkin()
+        set_clock(datetime(2026,11,4,9,20))
         result=self.api.store_journey(dict(employee_id=self.employee,attendance_action='start_photo',attendance_checkin='IN1',
-            start_odometer=999,start_odometer_photo='late',start_odometer_source='manual'))
+            start_odometer=999,start_odometer_photo='image',start_odometer_source='manual'))
         self.assertEqual(result['status'],'success')
+        self.assertFalse(self.context()['pending_start'])
+        self.assertEqual(self.journey()['start_odometer'],999)
+        self.assertEqual(self.journey()['start_odometer_photo'],'/files/photo.jpg')
+        self.assertEqual(len(self.store.get('NetraNext Journey')),1)
+        self.assertNotIn('late_start_photo',self.context())
+
+    def test_start_photo_after_checkout_is_rejected(self):
+        self.checkin()
+        self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 18:00:00'),'OUT1')
+        result=self.api.store_journey(dict(employee_id=self.employee,attendance_action='start_photo',attendance_checkin='IN1',
+            start_odometer=999,start_odometer_photo='image',start_odometer_source='manual'))
+        self.assertEqual(result['status'],'error')
         self.assertTrue(self.context()['pending_start'])
-        self.assertIsNone(self.journey().get('start_odometer'))
-        self.assertEqual(self.context()['late_start_photo'],'/files/photo.jpg')
-        context = result['data']['context']
-        self.assertTrue(context['late_start_photo_received'])
-        self.assertNotIn('late_start_photo', context)
+        self.assertTrue(self.context()['pending_end'])
+
+    def test_stationary_checkin_does_not_need_accurate_movement_fixes(self):
+        self.checkin()
+        self.assertEqual(self.journey()['start_time'],'2026-11-04 09:00:00')
+        set_clock(datetime(2026,11,4,9,10))
+        response=self.api.store_journey(dict(employee_id=self.employee,attendance_action='state'))
+        self.assertEqual(response['status'],'success')
+        self.assertEqual(len(self.store.get('NetraNext Journey')),1)
+        self.assertEqual(self.journey()['status'],'In Progress')
+
+    def test_failed_start_retries_from_original_checkin_without_duplicate(self):
+        with patch.object(self.helper,'_write_journey',side_effect=RuntimeError('Temporary failure')):
+            context=self.checkin()
+        self.assertIn('Temporary failure',context['start_error'])
+        self.assertNotIn('started_at',self.context())
+        set_clock(datetime(2026,11,4,9,10))
+        response=self.api.store_journey(dict(employee_id=self.employee,attendance_action='state'))
+        self.assertEqual(response['status'],'success')
+        self.assertNotIn('start_error',response['data']['context'])
+        self.assertEqual(self.journey()['start_time'],'2026-11-04 09:00:00')
+        self.assertEqual(len(self.store.get('NetraNext Journey')),1)
+
+    def test_photo_failure_keeps_dashboard_requirement_pending(self):
+        self.checkin()
+        with patch.object(self.helper,'_write_journey',side_effect=RuntimeError('Save failure')):
+            response=self.api.store_journey(dict(employee_id=self.employee,attendance_action='start_photo',attendance_checkin='IN1',
+                start_odometer=100,start_odometer_photo='image',start_odometer_source='manual'))
+        self.assertEqual(response['status'],'error')
+        self.assertTrue(self.context()['pending_start'])
 
     def test_manual_edit_setting_is_enforced(self):
         self.checkin();self.store.settings['allow_manual_odometer_edit']=0
@@ -177,7 +219,8 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.frappe.get_doc(dict(doctype='NetraNext Journey',name='MANUAL',employee=self.employee,
             flutter_journey_id='manual',status='In Progress')).insert()
         self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 10:00:00'),'OUT1')
-        self.assertEqual(self.journey()['status'],'In Progress')
+        self.assertEqual(self.frappe.db.get_value('NetraNext Journey','MANUAL','status'),'In Progress')
+        self.assertEqual(self.journey()['status'],'Completed')
 
     def test_employee_cannot_use_another_employees_checkin(self):
         self.checkin()

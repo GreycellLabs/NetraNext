@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 
 import frappe
 from frappe.utils import get_datetime, now_datetime
-from netranext_client.netranext.utils.movement_validation import evaluate_movement
 
 CONTEXT_FIELD = 'custom_netra_trip_context'
 REASON = 'Attendance-Based Automatic Start'
@@ -69,6 +68,66 @@ def payload(checkin_id, context):
     return result
 
 
+def _write_journey(checkin_id, context, initial=False):
+    """Use the same Journey persistence as manual start, sync and end."""
+    from netranext_client.netranext.apis.v1.sync import store_journey
+    data = dict(employee_id=context['employee'], user_id=context.get('user_id'),
+        journey_id=context['journey_id'], attendance_checkin=checkin_id,
+        tracking_source='attendance_auto', start_time=context['started_at'],
+        status='Completed' if context.get('closed') else 'In Progress')
+    if initial:
+        point = context['anchor']
+        data.update(start_location=f"{point['latitude']}, {point['longitude']}",
+                    raw_gps_data=json.dumps([dict(point, label='Start')]))
+    if context.get('closed'):
+        data['end_time'] = context['end_time']
+        point = context.get('end_point') or {}
+        if point.get('latitude') is not None and point.get('longitude') is not None:
+            data['end_location'] = f"{point['latitude']}, {point['longitude']}"
+    result = store_journey(data)
+    if result.get('status') != 'success':
+        frappe.throw(result.get('message') or 'Unable to save attendance-linked journey.')
+
+
+def _ensure_started(checkin_id, context):
+    """Idempotent check-in trigger, with no departure or movement gate."""
+    if context.get('closed'):
+        return
+    existing = frappe.db.get_value('NetraNext Journey',
+        {'employee': context['employee'], 'flutter_journey_id': context['journey_id']}, 'name')
+    if existing:
+        return  # A replay must not replace an existing route or start time.
+    if not enabled():
+        return
+    conflict = frappe.db.get_value('NetraNext Journey',
+        {'employee': context['employee'], 'status': 'In Progress'}, 'name')
+    if conflict:
+        frappe.throw('Another trip is already in progress. End it before starting an attendance trip.')
+    point = context['anchor']
+    if point.get('latitude') is None or point.get('longitude') is None:
+        frappe.throw('Attendance check-in has no location.')
+    # Always use the saved check-in instant, even when recovering a failed
+    # start or a session created by the former movement-monitor version.
+    context.update(started_at=str(local_time(float(point['timestamp']))), start_point=point)
+    context.pop('start_error', None)
+    save(checkin_id, context)
+    try:
+        _write_journey(checkin_id, context, initial=True)
+    except Exception:
+        context.pop('started_at', None)
+        context.pop('start_point', None)
+        raise
+
+
+def _try_start(checkin_id, context):
+    try:
+        _ensure_started(checkin_id, context)
+    except Exception as exc:
+        context['start_error'] = str(exc)
+        frappe.log_error(frappe.get_traceback(), 'Attendance Journey Start')
+        save(checkin_id, context)
+
+
 def handle_checkin_stored(data, checkin_id):
     if not enabled():
         return None
@@ -77,13 +136,15 @@ def handle_checkin_stored(data, checkin_id):
     previous_id, previous = latest(employee)
     if previous_id and previous_id != checkin_id and previous and not previous.get('closed'):
         # Duplicate check-in cannot reserve a second automatic journey or
-        # overwrite the original movement anchor/evidence.
+        # overwrite the original check-in location/evidence.
+        _try_start(previous_id, previous)
         return payload(previous_id, previous)
     checkin = frappe.get_doc('Employee Checkin', checkin_id)
     if checkin.get('custom_face_status') in ('Pending Approval', 'Rejected') or checkin.get('custom_location_status') in ('Pending Approval', 'Rejected'):
         return None
     current = unpack(checkin.get(CONTEXT_FIELD))
     if current:
+        _try_start(checkin_id, current)
         return payload(checkin_id, current)
     required = bool(int(frappe.db.get_single_value('NetraNext Settings', 'enable_odometer_reading') or 0))
     context = dict(enabled=True, employee=employee,
@@ -93,6 +154,7 @@ def handle_checkin_stored(data, checkin_id):
         closed=False, journey_id='attendance-' + checkin_id,
         odometer_required=required, pending_start=required, pending_end=False)
     save(checkin_id, context)
+    _try_start(checkin_id, context)
     return payload(checkin_id, context)
 
 
@@ -106,18 +168,14 @@ def handle_checkout_stored(data, checkout_id):
         return None  # A delayed checkout must not close a newer check-in.
     # Finish an owned automatic Journey even if settings changed mid-trip.
     if not context.get('closed'):
-        context.update(closed=True, checkout_id=checkout_id, end_time=str(data['time']))
+        context.update(closed=True, checkout_id=checkout_id, end_time=str(data['time']),
+                       end_point=dict(latitude=data.get('latitude'), longitude=data.get('longitude')))
         context['pending_end'] = bool(context.get('odometer_required') and context.get('started_at') and not context.get('end_photo_received'))
     save(checkin_id, context)
     name = frappe.db.get_value('NetraNext Journey',
         {'employee': employee, 'flutter_journey_id': context['journey_id']}, 'name')
     if name:
-        from netranext_client.netranext.apis.v1.sync import store_journey
-        result = store_journey(dict(employee_id=employee, journey_id=context['journey_id'],
-            tracking_source='attendance_auto', attendance_checkin=checkin_id,
-            start_time=context['started_at'], end_time=context['end_time'], status='Completed'))
-        if result.get('status') != 'success':
-            frappe.throw('Automatic journey could not be completed; retry checkout synchronization.')
+        _write_journey(checkin_id, context)
     return payload(checkin_id, context)
 
 
@@ -129,7 +187,7 @@ def prepare_auto_sync(data):
         frappe.throw('Automatic journey requires its attendance check-in.')
     checkin_id, context = latest(employee, checkin_id)
     if not context or not context.get('started_at') or data.get('journey_id') != context.get('journey_id'):
-        frappe.throw('Automatic journey does not match validated attendance movement.')
+        frappe.throw('Journey does not match its attendance check-in.')
     existing = frappe.db.get_value('NetraNext Journey',
         {'employee': employee, 'flutter_journey_id': context['journey_id']}, 'name')
     if not existing:
@@ -156,8 +214,8 @@ def prepare_auto_sync(data):
                        pending_end=bool(context.get('odometer_required')))
     if context.get('closed'):
         data.update(status='Completed', end_time=context['end_time'])
-    # The capture deadline is server receipt before departure. A late photo
-    # is retained separately and NEVER supplies the original start reading.
+    # Dashboard capture happens after check-in starts the trip. Persist that
+    # evidence on this same Journey and keep it authoritative on later syncs.
     for field in ('start_odometer', 'start_odometer_photo', 'start_odometer_source', 'start_odometer_original', 'start_odometer_unit'):
         data.pop(field, None)
     if not context.get('pending_start') and context.get('start_photo'):
@@ -189,10 +247,14 @@ def action(data):
     checkin_id, context = latest(employee, data.get('attendance_checkin'))
     operation = data['attendance_action']
     if operation == 'state':
+        if context and not context.get('closed'):
+            _try_start(checkin_id, context)
         return dict(context=payload(checkin_id, context) if context else None, enabled=enabled())
     if not context:
         frappe.throw('No attendance check-in to update.')
     if operation == 'start_photo':
+        if context.get('closed'):
+            frappe.throw('Start odometer photo can only be submitted while checked in.')
         from netranext_client.netranext.apis.v1.sync import _save_odometer_photo, _validate_odometer_sources
         from netranext_client.netranext.utils.odometer_units import normalize_odometer_fields
         normalize_odometer_fields(data)
@@ -206,48 +268,24 @@ def action(data):
         photo = _save_odometer_photo(data['start_odometer_photo'], context['journey_id'], 'start')
         if not photo:
             frappe.throw('Odometer photo could not be saved.')
-        if context.get('started_at') or context.get('closed'):
-            context['late_start_photo'] = photo
-            # Keep pending_start and the original reading unchanged.
-        else:
-            context.update(start_photo=photo, start_reading=value,
-                           start_source=data.get('start_odometer_source'),
-                           start_original=data.get('start_odometer_original'), start_unit=data.get('start_odometer_unit'),
-                           pending_start=False)
+        previous = dict(context)
+        context.update(start_photo=photo, start_reading=value,
+                       start_source=data.get('start_odometer_source'),
+                       start_original=data.get('start_odometer_original'), start_unit=data.get('start_odometer_unit'),
+                       start_captured_at=str(now_datetime()), pending_start=False)
         save(checkin_id, context)
+        if context.get('started_at'):
+            try:
+                _write_journey(checkin_id, context)
+            except Exception:
+                save(checkin_id, previous)
+                raise
     elif operation == 'confirm':
-        if context.get('started_at') and frappe.db.get_value('NetraNext Journey',
-                {'employee': employee, 'flutter_journey_id': context['journey_id']}, 'name'):
-            return dict(context=payload(checkin_id, context), enabled=enabled())
+        # Compatibility for old apps: confirmation is now an idempotent
+        # check-in start, and the former GPS fixes are deliberately ignored.
         if context.get('closed'):
             frappe.throw('Attendance is already checked out.')
-        if not enabled():
-            frappe.throw('Automatic attendance trips are disabled.')
-        if not context.get('started_at'):
-            conflict = frappe.db.get_value('NetraNext Journey', {'employee': employee, 'status': 'In Progress'}, 'name')
-            if conflict:
-                frappe.throw('Another trip is already in progress.')
-            fixes = data.get('fixes') or []
-            if not isinstance(fixes, list) or len(fixes) > 300:
-                frappe.throw('Invalid movement fixes.')
-            anchor = context['anchor']
-            if anchor.get('latitude') is None or anchor.get('longitude') is None:
-                frappe.throw('Attendance check-in has no location.')
-            result = evaluate_movement(anchor, fixes, now_ms=epoch_ms(now_datetime()))
-            if result['status'] != 'confirmed':
-                frappe.throw('Valid movement beyond 100 metres has not been confirmed.')
-            fix = next(f for f in fixes if f['timestamp'] == result['confirmed_at_ms'])
-            context.update(started_at=str(local_time(result['confirmed_at_ms'])), start_point=fix)
-            save(checkin_id, context)
-        from netranext_client.netranext.apis.v1.sync import store_journey
-        point = context['start_point']
-        result = store_journey(dict(employee_id=employee, user_id=context.get('user_id'),
-            journey_id=context['journey_id'], attendance_checkin=checkin_id,
-            tracking_source='attendance_auto', start_time=context['started_at'],
-            start_location=f"{point['latitude']}, {point['longitude']}",
-            raw_gps_data=json.dumps([point]), status='In Progress'))
-        if result.get('status') != 'success':
-            frappe.throw(result.get('message') or 'Unable to start journey.')
+        _ensure_started(checkin_id, context)
     else:
         frappe.throw('Unknown attendance journey action.')
     return dict(context=payload(checkin_id, context), enabled=enabled())

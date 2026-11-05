@@ -95,7 +95,7 @@
   },
   {
    "default": "0",
-   "description": "When checked, a successful attendance check-in starts GPS movement monitoring. A trip is started automatically only after genuine movement beyond ~100 meters is validated away from the check-in point. Odometer photos (when odometer reading is enabled) are requested separately and never block check-in. When unchecked, attendance and trips work exactly as before.",
+   "description": "When checked, a successful approved attendance check-in immediately starts the existing Journey at the check-in location. Check-out ends the linked Journey. Odometer photos are captured separately from the Dashboard and never delay trip start. When unchecked, attendance and trips work independently.",
    "fieldname": "enable_auto_attendance_trip_tracking",
    "fieldtype": "Check",
    "label": "Enable Automatic Trip Tracking Based on Attendance"
