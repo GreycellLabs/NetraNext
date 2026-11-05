@@ -77,6 +77,16 @@ class AttendanceJourneyTests(unittest.TestCase):
         return self.api.store_journey(dict(employee_id=self.employee,attendance_action='confirm',
             attendance_checkin='IN1',fixes=fixes,**kwargs))
 
+    def claim_reminder(self, **kwargs):
+        set_clock(datetime(2026,11,4,9,2))
+        fixes=[dict(latitude=12.+m/111195,longitude=77.,accuracy=8,timestamp=self.t0+1000*t)
+               for m,t in [(150,100),(175,110),(200,120)]]
+        request=dict(employee_id=self.employee,
+            attendance_action='claim_start_odometer_reminder',attendance_checkin='IN1',
+            reminder_kind='start',claim_id='claim-1',fixes=fixes)
+        request.update(kwargs)
+        return self.api.store_journey(request)
+
     def context(self):
         return self.helper.latest(self.employee,'IN1')[1]
 
@@ -168,6 +178,73 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(result['status'],'error')
         self.assertTrue(self.context()['pending_start'])
         self.assertTrue(self.context()['pending_end'])
+
+    def test_conflicting_trip_ending_never_backdates_an_attendance_start(self):
+        self.frappe.get_doc(dict(doctype='NetraNext Journey',name='EXISTING',employee=self.employee,
+            flutter_journey_id='manual1',tracking_source='manual',status='In Progress')).insert()
+        context=self.checkin()
+        self.assertTrue(context['start_conflict'])
+        self.assertIn('already in progress',context['start_error'])
+        self.assertEqual(len(self.store.get('NetraNext Journey')),1)
+        # Once the conflicting manual trip ends, a later state refresh must
+        # not silently start a backdated automatic trip for this check-in.
+        self.frappe.db.set_value('NetraNext Journey','EXISTING','status','Completed')
+        set_clock(datetime(2026,11,4,9,10))
+        response=self.api.store_journey(dict(employee_id=self.employee,attendance_action='state'))
+        self.assertEqual(response['status'],'success')
+        self.assertNotIn('started_at',self.context())
+        self.assertEqual(len(self.store.get('NetraNext Journey')),1)
+
+    def test_state_reconciles_a_checkout_whose_completion_write_failed(self):
+        self.checkin();self.confirm()
+        with patch.object(self.helper,'_write_journey',side_effect=RuntimeError('Save failure')):
+            with self.assertRaises(RuntimeError):
+                self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 10:00:00'),'OUT1')
+        self.assertTrue(self.context()['closed'])
+        self.assertEqual(self.journey()['status'],'In Progress')
+        response=self.api.store_journey(dict(employee_id=self.employee,attendance_action='state'))
+        self.assertEqual(response['status'],'success')
+        self.assertEqual(self.journey()['status'],'Completed')
+        self.assertTrue(self.context()['pending_end'])
+
+    def test_start_reminder_claim_is_one_time_and_reports_the_receipt(self):
+        self.checkin()
+        result=self.claim_reminder()
+        self.assertEqual(result['status'],'success')
+        self.assertTrue(result['data']['claimed'])
+        self.assertTrue(result['data']['context']['start_reminder_claimed'])
+        self.assertEqual(self.context()['start_reminder']['claim_id'],'claim-1')
+        replay=self.claim_reminder()
+        self.assertEqual(replay['status'],'success')
+        self.assertFalse(replay['data']['claimed'])
+        self.assertTrue(replay['data']['suppressed'])
+        self.assertTrue(self.context()['start_reminder']['claimed'])
+
+    def test_start_reminder_claim_is_suppressed_once_photo_is_accepted(self):
+        self.checkin()
+        self.api.store_journey(dict(employee_id=self.employee,attendance_action='start_photo',attendance_checkin='IN1',
+            start_odometer=100,start_odometer_photo='image',start_odometer_source='manual'))
+        result=self.claim_reminder()
+        self.assertEqual(result['status'],'success')
+        self.assertFalse(result['data']['claimed'])
+        self.assertTrue(result['data']['suppressed'])
+        self.assertNotIn('start_reminder',self.context())
+
+    def test_start_reminder_claim_rejects_unconfirmed_or_malformed_evidence(self):
+        self.checkin()
+        short=[dict(latitude=12.+20/111195,longitude=77.,accuracy=8,timestamp=self.t0+1000*t) for t in (1,2,3)]
+        self.assertEqual(self.claim_reminder(fixes=short)['status'],'error')
+        empty=self.claim_reminder(fixes=[])
+        self.assertEqual(empty['status'],'error')
+        self.assertIn('evidence',empty['message'])
+        negative=self.claim_reminder(fixes=[dict(latitude=12.,longitude=77.,accuracy=-5,timestamp=self.t0+1000)])
+        self.assertEqual(negative['status'],'error')
+        self.assertNotIn('start_reminder',self.context())
+
+    def test_start_reminder_claim_rejected_after_checkout(self):
+        self.checkin()
+        self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 10:00:00'),'OUT1')
+        self.assertEqual(self.claim_reminder()['status'],'error')
 
     def test_stationary_checkin_does_not_need_accurate_movement_fixes(self):
         self.checkin()

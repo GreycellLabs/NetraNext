@@ -1,14 +1,19 @@
 # Copyright (c) 2026
 # License: MIT - see LICENSE for details
-"""Shared GPS movement validation for attendance-based trip auto-start.
+"""Shared GPS movement validation for attendance-linked trip features.
 
 Pure functions only - no frappe imports - so the exact same algorithm and
 parameters can be mirrored on the mobile client (Dart) and unit-tested
 against a single shared fixture file (see tests/fixtures/).
 
-Policy (AUTO_ATTENDANCE_TRIP_IMPLEMENTATION_PLAN.md section 5):
-- A trip starts only after GENUINE movement beyond ~100 m from the check-in
-  anchor is confirmed. GPS drift and inaccurate fixes must never start a trip.
+Policy: an attendance trip STARTS immediately at check-in; this validator
+gates only the one-time start-odometer REMINDER (and any other ~100 m
+displacement decision), never trip creation, route capture or
+synchronization.
+
+- A reminder fires only after GENUINE displacement beyond ~100 m from the
+  check-in anchor is confirmed. GPS drift and inaccurate fixes must never
+  fire it.
 - Confirmation requires MOVEMENT_CONFIRM_FIXES distinct qualifying fixes
   within a MOVEMENT_CONFIRM_WINDOW_S rolling window.
 - A fix qualifies when it is fresh, accurate enough, not a duplicate

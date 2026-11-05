@@ -4,6 +4,7 @@ One private JSON context lives on Employee Checkin. All journey writes use
 sync.store_journey, including check-out. This module exposes no HTTP methods.
 """
 import json
+import math
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -12,6 +13,15 @@ from frappe.utils import get_datetime, now_datetime
 
 CONTEXT_FIELD = 'custom_netra_trip_context'
 REASON = 'Attendance-Based Automatic Start'
+
+
+class ActiveTripConflict(Exception):
+    """A different manual/scheduled Journey is already in progress.
+
+    Permanent condition for this check-in: unlike a transient creation
+    failure it must not be retried by later state refreshes (which would
+    silently start a backdated automatic trip once the other trip ends).
+    """
 
 
 def enabled():
@@ -59,6 +69,10 @@ def payload(checkin_id, context):
     result = {k: v for k, v in dict(context, checkin_id=checkin_id, enabled=enabled()).items()
               if k not in ('start_photo', 'late_start_photo')}
     result['late_start_photo_received'] = bool(context.get('late_start_photo'))
+    receipt = context.get('start_reminder') or {}
+    # Phones reconcile their persisted receipt after restarts/reinstalls
+    # from this summary alone; claim identifiers stay server-side.
+    result['start_reminder_claimed'] = bool(receipt.get('claimed'))
     for key in ('started_at', 'end_time'):
         if result.get(key):
             dt = get_datetime(result[key])
@@ -102,7 +116,7 @@ def _ensure_started(checkin_id, context):
     conflict = frappe.db.get_value('NetraNext Journey',
         {'employee': context['employee'], 'status': 'In Progress'}, 'name')
     if conflict:
-        frappe.throw('Another trip is already in progress. End it before starting an attendance trip.')
+        raise ActiveTripConflict('Another trip is already in progress. End it before starting an attendance trip.')
     point = context['anchor']
     if point.get('latitude') is None or point.get('longitude') is None:
         frappe.throw('Attendance check-in has no location.')
@@ -122,6 +136,14 @@ def _ensure_started(checkin_id, context):
 def _try_start(checkin_id, context):
     try:
         _ensure_started(checkin_id, context)
+    except ActiveTripConflict as exc:
+        # Permanent for this check-in: keep the error visible, but never let
+        # a later state refresh silently start a backdated automatic trip
+        # once the conflicting manual/scheduled trip ends.
+        context['start_error'] = str(exc)
+        context['start_conflict'] = True
+        frappe.log_error(frappe.get_traceback(), 'Attendance Journey Start')
+        save(checkin_id, context)
     except Exception as exc:
         context['start_error'] = str(exc)
         frappe.log_error(frappe.get_traceback(), 'Attendance Journey Start')
@@ -240,6 +262,85 @@ def prepare_auto_sync(data):
     return context
 
 
+def _complete_closed_journey(employee, checkin_id, context):
+    """Finish a closed context's linked Journey when its completion write
+    failed (checkout hook error / crash). Replays the same completion the
+    checkout path performs; a delayed/duplicate reconciliation is guarded by
+    the context's own closed state and the completed-record guard."""
+    name = frappe.db.get_value('NetraNext Journey',
+        {'employee': employee, 'flutter_journey_id': context['journey_id']}, 'name')
+    if not name:
+        return
+    if frappe.db.get_value('NetraNext Journey', name, 'status') == 'In Progress':
+        _write_journey(checkin_id, context)
+
+
+def _finite(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _claim_start_reminder(data, checkin_id, context):
+    """Atomically consume the one-time 100 m start-odometer reminder.
+
+    The employee lock is already held by action(). Eligibility is rechecked
+    server-side (open context, active linked Journey, required and still
+    pending start evidence, no consumed receipt); the caller's fix buffer is
+    validated with the shared movement validator so GPS drift, stale,
+    future, duplicate or implausible fixes can never fire the reminder.
+    """
+    from netranext_client.netranext.utils.movement_validation import evaluate_movement
+    receipt = context.get('start_reminder') or {}
+    if receipt.get('claimed'):
+        return dict(context=payload(checkin_id, context), enabled=enabled(),
+                    claimed=False, suppressed=True)
+    if context.get('closed'):
+        frappe.throw('Attendance is already checked out.')
+    if not context.get('started_at'):
+        frappe.throw('Attendance trip has not started.')
+    if not context.get('odometer_required') or not context.get('pending_start'):
+        # Photo accepted (or odometer not required) in the meantime: the
+        # reminder is permanently ineligible, never deferred.
+        return dict(context=payload(checkin_id, context), enabled=enabled(),
+                    claimed=False, suppressed=True)
+    status = frappe.db.get_value('NetraNext Journey',
+        {'employee': context['employee'], 'flutter_journey_id': context['journey_id']}, 'status')
+    if status != 'In Progress':
+        return dict(context=payload(checkin_id, context), enabled=enabled(),
+                    claimed=False, suppressed=True)
+
+    anchor_raw = context.get('anchor') or {}
+    anchor = dict(latitude=_finite(anchor_raw.get('latitude')),
+                  longitude=_finite(anchor_raw.get('longitude')),
+                  accuracy=_finite(anchor_raw.get('accuracy')),
+                  timestamp=_finite(anchor_raw.get('timestamp')))
+    if anchor['latitude'] is None or anchor['longitude'] is None or anchor['timestamp'] is None:
+        frappe.throw('Attendance check-in anchor is incomplete.')
+    fixes_raw = data.get('fixes')
+    if not isinstance(fixes_raw, list) or not fixes_raw:
+        frappe.throw('Movement evidence is required.')
+    fixes = []
+    for fix in fixes_raw:
+        fix = fix if isinstance(fix, dict) else {}
+        accuracy = _finite(fix.get('accuracy'))
+        if accuracy is not None and accuracy < 0:
+            frappe.throw('Movement evidence contains an invalid accuracy.')
+        fixes.append(dict(latitude=_finite(fix.get('latitude')),
+                          longitude=_finite(fix.get('longitude')),
+                          accuracy=accuracy,
+                          timestamp=_finite(fix.get('timestamp'))))
+    evaluation = evaluate_movement(anchor, fixes, now_ms=epoch_ms(now_datetime()))
+    if evaluation['status'] != 'confirmed':
+        frappe.throw('Movement is not confirmed beyond the 100-meter threshold.')
+    context['start_reminder'] = dict(kind='start', claimed=True,
+        claim_id=data.get('claim_id'), claimed_at=str(now_datetime()))
+    save(checkin_id, context)
+    return dict(context=payload(checkin_id, context), enabled=enabled(), claimed=True)
+
+
 def action(data):
     """Small actions on the existing store_journey request contract."""
     employee = data['employee_id']
@@ -248,10 +349,19 @@ def action(data):
     operation = data['attendance_action']
     if operation == 'state':
         if context and not context.get('closed'):
-            _try_start(checkin_id, context)
+            # Transient failures retry; a permanent active-trip conflict
+            # never back-dates a start once the conflicting trip ends.
+            if not context.get('start_conflict'):
+                _try_start(checkin_id, context)
+        elif context and context.get('closed'):
+            # Reconcile a checkout whose completion write failed: the
+            # context is closed but the linked Journey is still running.
+            _complete_closed_journey(employee, checkin_id, context)
         return dict(context=payload(checkin_id, context) if context else None, enabled=enabled())
     if not context:
         frappe.throw('No attendance check-in to update.')
+    if operation == 'claim_start_odometer_reminder':
+        return _claim_start_reminder(data, checkin_id, context)
     if operation == 'start_photo':
         if context.get('closed'):
             frappe.throw('Start odometer photo can only be submitted while checked in.')
