@@ -467,16 +467,23 @@ def store_attendance(att_data):
         # the handler itself; attendance storage must never break because
         # of it, so every failure is contained here).
         tracking_payload = None
+        tracking_skipped = None
         try:
             from netranext_client.netranext.utils.attendance_journey import (
                 handle_checkin_stored,
                 handle_checkout_stored,
             )
             if (att_data.get("log_type") or "").upper() == "IN":
-                tracking_payload = handle_checkin_stored(att_data, checkin_doc.name)
+                result = handle_checkin_stored(att_data, checkin_doc.name)
             else:
-                tracking_payload = handle_checkout_stored(att_data, checkin_doc.name)
-            if tracking_payload:
+                result = handle_checkout_stored(att_data, checkin_doc.name)
+            if isinstance(result, dict) and result.get("skipped"):
+                # Deliberate no-start with its reason: surfaced to the app so
+                # a skipped trip is never mistaken for a missing payload.
+                tracking_skipped = result.get("skipped")
+            elif result:
+                tracking_payload = result
+            if tracking_payload or tracking_skipped:
                 frappe.db.commit()
         except Exception as tracking_err:
             tenant_bench_logger.error(
@@ -497,6 +504,8 @@ def store_attendance(att_data):
         }
         if tracking_payload:
             response_data["attendance_tracking"] = tracking_payload
+        if tracking_skipped:
+            response_data["attendance_tracking_skipped"] = tracking_skipped
 
         return create_success_response(
             message="Attendance record stored successfully",

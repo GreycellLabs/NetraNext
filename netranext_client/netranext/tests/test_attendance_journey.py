@@ -104,7 +104,40 @@ class AttendanceJourneyTests(unittest.TestCase):
 
     def test_disabled_setting_changes_nothing(self):
         self.store.settings['enable_auto_attendance_trip_tracking']=0
-        self.assertIsNone(self.checkin())
+        self.assertEqual(self.checkin(),{'skipped':'feature_disabled'})
+        self.assertEqual(self.store.get('NetraNext Journey'),[])
+
+    def test_pending_location_approval_skips_with_reason(self):
+        self.frappe.get_doc(dict(doctype='Employee Checkin',name='IN1',employee=self.employee,
+            log_type='IN',time=datetime(2026,11,4,9),custom_location_status='Pending Approval')).insert()
+        result=self.helper.handle_checkin_stored(dict(employee_id=self.employee,
+            latitude=12.,longitude=77.,tracking_accuracy=8),'IN1')
+        self.assertEqual(result,{'skipped':'approval_pending'})
+        self.assertEqual(self.store.get('NetraNext Journey'),[])
+        self.assertFalse(self.helper.latest(self.employee,'IN1')[1])
+
+    def test_start_after_approval_starts_the_trip(self):
+        self.frappe.get_doc(dict(doctype='Employee Checkin',name='IN1',employee=self.employee,
+            log_type='IN',time=datetime(2026,11,4,9),latitude=12.,longitude=77.,
+            custom_location_status='Pending Approval')).insert()
+        self.helper.handle_checkin_stored(dict(employee_id=self.employee,
+            latitude=12.,longitude=77.,tracking_accuracy=8),'IN1')
+        self.frappe.db.set_value('Employee Checkin','IN1','custom_location_status','Approved')
+        payload=self.helper.start_after_approval('IN1')
+        self.assertEqual(payload['journey_id'],'attendance-IN1')
+        self.assertTrue(payload['started_at'])
+        self.assertEqual(self.journey()['status'],'In Progress')
+        self.assertEqual(self.journey()['attendance_checkin'],'IN1')
+        # Replaying the approval trigger must not duplicate the trip.
+        self.helper.start_after_approval('IN1')
+        self.assertEqual(len(self.store.get('NetraNext Journey')),1)
+
+    def test_start_after_approval_waits_for_face_approval_too(self):
+        self.frappe.get_doc(dict(doctype='Employee Checkin',name='IN1',employee=self.employee,
+            log_type='IN',time=datetime(2026,11,4,9),latitude=12.,longitude=77.,
+            custom_location_status='Approved',
+            custom_face_status='Pending Approval')).insert()
+        self.assertEqual(self.helper.start_after_approval('IN1'),{'skipped':'approval_pending'})
         self.assertEqual(self.store.get('NetraNext Journey'),[])
 
     def test_confirm_uses_existing_journey_and_replay_is_idempotent(self):

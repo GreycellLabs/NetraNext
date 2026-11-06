@@ -45,7 +45,23 @@ class NetraNextFaceCheckinApproval(Document):
                     "custom_face_status": checkin_status,
                     "skip_auto_attendance": skip_auto
                 })
-            
+
+                if self.status == "Approved":
+                    # A provisional face check-in could not start its automatic
+                    # trip (face approval was pending). Start it now that the
+                    # evidence is approved; a no-op when tracking is disabled,
+                    # location evidence is still pending or the trip exists.
+                    try:
+                        from netranext_client.netranext.utils.attendance_journey import start_after_approval
+                        start_after_approval(self.employee_checkin)
+                        frappe.db.commit()
+                    except Exception as trip_err:
+                        frappe.log_error(
+                            f"Attendance trip start after face approval failed "
+                            f"for {self.employee_checkin}: {trip_err}",
+                            "Attendance Trip Approval Start",
+                        )
+
             # Close related ToDo tasks
             todos = frappe.get_all("ToDo", filters={
                 "reference_type": self.doctype,

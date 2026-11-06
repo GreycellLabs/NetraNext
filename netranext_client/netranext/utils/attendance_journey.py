@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 import frappe
 from frappe.utils import get_datetime, now_datetime
 
+from netranext_client.netranext.utils.logger import tenant_bench_logger
+
 CONTEXT_FIELD = 'custom_netra_trip_context'
 REASON = 'Attendance-Based Automatic Start'
 
@@ -150,9 +152,19 @@ def _try_start(checkin_id, context):
         save(checkin_id, context)
 
 
+def _skipped(reason):
+    """Marker the caller turns into an `attendance_tracking_skipped` response
+    field: the app can then tell 'trip deliberately not started (reason)'
+    apart from 'payload never arrived', instead of showing silent nothing."""
+    return dict(skipped=reason)
+
+
 def handle_checkin_stored(data, checkin_id):
     if not enabled():
-        return None
+        tenant_bench_logger.info(
+            f"Attendance trip skipped at check-in {checkin_id}: tracking disabled in NetraNext Settings",
+            "ATTENDANCE_TRIP")
+        return _skipped('feature_disabled')
     employee = data['employee_id']
     lock_employee(employee)
     previous_id, previous = latest(employee)
@@ -163,21 +175,72 @@ def handle_checkin_stored(data, checkin_id):
         return payload(previous_id, previous)
     checkin = frappe.get_doc('Employee Checkin', checkin_id)
     if checkin.get('custom_face_status') in ('Pending Approval', 'Rejected') or checkin.get('custom_location_status') in ('Pending Approval', 'Rejected'):
-        return None
+        tenant_bench_logger.info(
+            f"Attendance trip skipped at check-in {checkin_id}: face/location approval pending "
+            f"(face={checkin.get('custom_face_status')}, location={checkin.get('custom_location_status')})",
+            "ATTENDANCE_TRIP")
+        return _skipped('approval_pending')
     current = unpack(checkin.get(CONTEXT_FIELD))
-    if current:
-        _try_start(checkin_id, current)
-        return payload(checkin_id, current)
+    if not current:
+        current = _new_context(data, checkin)
+        save(checkin_id, current)
+    _try_start(checkin_id, current)
+    tenant_bench_logger.info(
+        f"Attendance trip check-in {checkin_id}: journey_id={current.get('journey_id')}, "
+        f"started={bool(current.get('started_at'))}, error={current.get('start_error')}",
+        "ATTENDANCE_TRIP")
+    return payload(checkin_id, current)
+
+
+def _new_context(data, checkin):
+    """Build the initial context for a check-in that is now allowed to own an
+    automatic Journey (used by both check-in storage and approval flows)."""
+    employee = checkin.employee
     required = bool(int(frappe.db.get_single_value('NetraNext Settings', 'enable_odometer_reading') or 0))
-    context = dict(enabled=True, employee=employee,
+    return dict(enabled=True, employee=employee,
         user_id=frappe.db.get_value('Employee', employee, 'user_id'),
         anchor=dict(latitude=data.get('latitude'), longitude=data.get('longitude'),
                     accuracy=data.get('tracking_accuracy'), timestamp=epoch_ms(checkin.time)),
-        closed=False, journey_id='attendance-' + checkin_id,
+        closed=False, journey_id='attendance-' + checkin.name,
         odometer_required=required, pending_start=required, pending_end=False)
-    save(checkin_id, context)
-    _try_start(checkin_id, context)
-    return payload(checkin_id, context)
+
+
+def start_after_approval(checkin_id):
+    """Approval-flow trigger: a check-in whose face/location evidence was
+    pending at capture becomes eligible to start its automatic Journey only
+    when the approval lands. No-op for check-outs, disabled settings,
+    still-pending evidence, already-started or superseded check-ins."""
+    checkin_fields = frappe.db.get_value('Employee Checkin', checkin_id,
+        ['name', 'employee', 'log_type', 'time', 'latitude', 'longitude',
+         'custom_face_status', 'custom_location_status'], as_dict=True)
+    if not checkin_fields:
+        return None
+    if (checkin_fields.log_type or '').upper() != 'IN':
+        return None
+    employee = checkin_fields.employee
+    lock_employee(employee)
+    if not enabled():
+        return _skipped('feature_disabled')
+    if checkin_fields.custom_face_status in ('Pending Approval', 'Rejected') or \
+            checkin_fields.custom_location_status in ('Pending Approval', 'Rejected'):
+        return _skipped('approval_pending')
+    previous_id, previous = latest(employee)
+    if previous_id and previous_id != checkin_id and previous and not previous.get('closed'):
+        # A newer open check-in owns the session; a late approval of an older
+        # check-in must not hijack or duplicate it.
+        return _skipped('newer_checkin_active')
+    current = unpack(frappe.db.get_value('Employee Checkin', checkin_id, CONTEXT_FIELD))
+    if not current:
+        # The check-in row itself is the evidence source here (frappe._dict
+        # serves both the anchor data and the check-in attributes).
+        current = _new_context(checkin_fields, checkin_fields)
+        save(checkin_id, current)
+    _try_start(checkin_id, current)
+    tenant_bench_logger.info(
+        f"Attendance trip after approval of {checkin_id}: journey_id={current.get('journey_id')}, "
+        f"started={bool(current.get('started_at'))}, error={current.get('start_error')}",
+        "ATTENDANCE_TRIP")
+    return payload(checkin_id, current)
 
 
 def handle_checkout_stored(data, checkout_id):
