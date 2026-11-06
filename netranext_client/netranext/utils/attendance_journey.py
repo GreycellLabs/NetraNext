@@ -160,20 +160,24 @@ def _skipped(reason):
 
 
 def handle_checkin_stored(data, checkin_id):
+    employee = data['employee_id']
+    lock_employee(employee)
+    checkin = frappe.get_doc('Employee Checkin', checkin_id)
+    previous_id, previous = latest(employee)
+    if previous_id and previous_id != checkin_id:
+        # Whatever this check-in starts, a check-out the previous session
+        # missed - or forgot, on an earlier day - ends that session first.
+        _reconcile_open(previous_id, previous, next_checkin=checkin)
     if not enabled():
         tenant_bench_logger.info(
             f"Attendance trip skipped at check-in {checkin_id}: tracking disabled in NetraNext Settings",
             "ATTENDANCE_TRIP")
         return _skipped('feature_disabled')
-    employee = data['employee_id']
-    lock_employee(employee)
-    previous_id, previous = latest(employee)
     if previous_id and previous_id != checkin_id and previous and not previous.get('closed'):
         # Duplicate check-in cannot reserve a second automatic journey or
         # overwrite the original check-in location/evidence.
         _try_start(previous_id, previous)
         return payload(previous_id, previous)
-    checkin = frappe.get_doc('Employee Checkin', checkin_id)
     if checkin.get('custom_face_status') in ('Pending Approval', 'Rejected') or checkin.get('custom_location_status') in ('Pending Approval', 'Rejected'):
         tenant_bench_logger.info(
             f"Attendance trip skipped at check-in {checkin_id}: face/location approval pending "
@@ -219,12 +223,14 @@ def start_after_approval(checkin_id):
         return None
     employee = checkin_fields.employee
     lock_employee(employee)
+    previous_id, previous = latest(employee)
+    if previous_id and previous_id != checkin_id:
+        _reconcile_open(previous_id, previous, next_checkin=checkin_fields)
     if not enabled():
         return _skipped('feature_disabled')
     if checkin_fields.custom_face_status in ('Pending Approval', 'Rejected') or \
             checkin_fields.custom_location_status in ('Pending Approval', 'Rejected'):
         return _skipped('approval_pending')
-    previous_id, previous = latest(employee)
     if previous_id and previous_id != checkin_id and previous and not previous.get('closed'):
         # A newer open check-in owns the session; a late approval of an older
         # check-in must not hijack or duplicate it.
@@ -243,6 +249,11 @@ def start_after_approval(checkin_id):
     return payload(checkin_id, current)
 
 
+def _mark_closed(context, end_time, end_point, **marks):
+    context.update(closed=True, end_time=str(end_time), end_point=end_point, **marks)
+    context['pending_end'] = bool(context.get('odometer_required') and context.get('started_at') and not context.get('end_photo_received'))
+
+
 def handle_checkout_stored(data, checkout_id):
     employee = data['employee_id']
     lock_employee(employee)
@@ -253,15 +264,93 @@ def handle_checkout_stored(data, checkout_id):
         return None  # A delayed checkout must not close a newer check-in.
     # Finish an owned automatic Journey even if settings changed mid-trip.
     if not context.get('closed'):
-        context.update(closed=True, checkout_id=checkout_id, end_time=str(data['time']),
-                       end_point=dict(latitude=data.get('latitude'), longitude=data.get('longitude')))
-        context['pending_end'] = bool(context.get('odometer_required') and context.get('started_at') and not context.get('end_photo_received'))
+        _mark_closed(context, data['time'], dict(latitude=data.get('latitude'), longitude=data.get('longitude')),
+                     checkout_id=checkout_id)
     save(checkin_id, context)
     name = frappe.db.get_value('NetraNext Journey',
         {'employee': employee, 'flutter_journey_id': context['journey_id']}, 'name')
     if name:
         _write_journey(checkin_id, context)
     return payload(checkin_id, context)
+
+
+def _recorded_checkout(context):
+    """First check-out logged after this session's check-in. The check-out
+    hook normally closes the session itself; this finds one it missed (hook
+    failure, or a check-out recorded outside the app)."""
+    rows = frappe.get_all('Employee Checkin', filters={
+        'employee': context['employee'], 'log_type': 'OUT',
+        'time': ['>', local_time(float(context['anchor']['timestamp']))]},
+        fields=['name', 'time', 'latitude', 'longitude'], order_by='time asc, creation asc', limit=1)
+    return rows[0] if rows else None
+
+
+def _point_time(value):
+    """System-zone wall time of a stored GPS point (epoch ms or ISO 8601)."""
+    if isinstance(value, (int, float)):
+        return local_time(value)
+    try:
+        dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(ZoneInfo(frappe.utils.get_system_timezone())).replace(tzinfo=None)
+    return dt
+
+
+def _last_recorded_point(context):
+    """Time and place of the newest GPS point on the session's Journey."""
+    raw = frappe.db.get_value('NetraNext Journey',
+        {'employee': context['employee'], 'flutter_journey_id': context['journey_id']}, 'raw_gps_data')
+    try:
+        points = unpack(raw)
+    except ValueError:
+        points = []
+    for point in reversed(points if isinstance(points, list) else []):
+        when = _point_time(point.get('timestamp')) if isinstance(point, dict) else None
+        if when is not None:
+            return when, dict(latitude=point.get('latitude'), longitude=point.get('longitude'))
+    return None, None
+
+
+def _reconcile_open(checkin_id, context, next_checkin=None):
+    """Close an open session whose end it missed: a check-out logged after
+    it, or - once `next_checkin` arrives - a session left open from an
+    earlier day (forgotten check-out), so every new check-in gets its own
+    trip and odometer flow. A same-day repeat check-in keeps the session.
+    The trip completes through the same Journey path as check-out."""
+    if not context or context.get('closed'):
+        return False
+    anchor_ms = (context.get('anchor') or {}).get('timestamp')
+    if anchor_ms is None:
+        return False
+    checkout = _recorded_checkout(context)
+    if checkout:
+        end_time = checkout.time
+        end_point = dict(latitude=checkout.latitude, longitude=checkout.longitude)
+        marks = dict(checkout_id=checkout.name)
+    elif next_checkin is not None and \
+            local_time(float(anchor_ms)).date() < get_datetime(next_checkin.time).date():
+        next_time = get_datetime(next_checkin.time)
+        end_time, end_point = _last_recorded_point(context)
+        if end_time is None or end_time > next_time:
+            end_time, end_point = next_time, None
+        marks = dict(superseded_by=next_checkin.name)
+    else:
+        return False
+    _mark_closed(context, end_time, end_point, **marks)
+    save(checkin_id, context)
+    tenant_bench_logger.info(
+        f"Attendance trip session {checkin_id} closed at {end_time} "
+        f"({'missed check-out ' + checkout.name if checkout else 'superseded by check-in ' + next_checkin.name})",
+        "ATTENDANCE_TRIP")
+    try:
+        _complete_closed_journey(context['employee'], checkin_id, context)
+    except Exception:
+        # The session stays closed; state refreshes and the app's final
+        # sync retry completing its Journey.
+        frappe.log_error(frappe.get_traceback(), 'Attendance Journey Close')
+    return True
 
 
 def prepare_auto_sync(data):
@@ -419,6 +508,8 @@ def action(data):
     employee = data['employee_id']
     lock_employee(employee)
     checkin_id, context = latest(employee, data.get('attendance_checkin'))
+    # A check-out this session missed ends it before any action applies.
+    _reconcile_open(checkin_id, context)
     operation = data['attendance_action']
     if operation == 'state':
         if context and not context.get('closed'):
@@ -429,7 +520,12 @@ def action(data):
         elif context and context.get('closed'):
             # Reconcile a checkout whose completion write failed: the
             # context is closed but the linked Journey is still running.
-            _complete_closed_journey(employee, checkin_id, context)
+            # The closed session is reported either way so the app stops
+            # tracking; its final sync and later refreshes retry the write.
+            try:
+                _complete_closed_journey(employee, checkin_id, context)
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), 'Attendance Journey Close')
         return dict(context=payload(checkin_id, context) if context else None, enabled=enabled())
     if not context:
         frappe.throw('No attendance check-in to update.')

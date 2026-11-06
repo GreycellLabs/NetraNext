@@ -105,6 +105,9 @@ def _matches(row, filters):
         elif isinstance(expected, (list, tuple)) and expected and expected[0] == "<=":
             if actual is None or parse_dt(actual) > parse_dt(expected[1]):
                 return False
+        elif isinstance(expected, (list, tuple)) and expected and expected[0] == ">":
+            if actual is None or parse_dt(actual) <= parse_dt(expected[1]):
+                return False
         elif isinstance(expected, (list, tuple)) and expected and expected[0] == 'is':
             if expected[1] == 'set' and actual in (None, ''):
                 return False

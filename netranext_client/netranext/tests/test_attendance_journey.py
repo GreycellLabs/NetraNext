@@ -540,5 +540,110 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertFalse(context['closed'])
         self.assertNotIn('end_photo_received',context)
 
+    def record(self, name, log_type, when, **fields):
+        self.frappe.get_doc(dict(doctype='Employee Checkin',name=name,employee=self.employee,
+            log_type=log_type,time=when,**fields)).insert()
+
+    def journey_named(self, flutter_id):
+        return next(j for j in self.store.get('NetraNext Journey') if j['flutter_journey_id']==flutter_id)
+
+    def test_odometer_disabled_trip_starts_and_ends_without_photos(self):
+        self.store.settings['enable_odometer_reading']=0
+        context=self.checkin()
+        self.assertTrue(context['started_at'])
+        self.assertFalse(context['odometer_required'])
+        self.assertFalse(context['pending_start'])
+        self.assertEqual(self.journey()['status'],'In Progress')
+        closed=self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 18:00:00',
+            latitude=12.1,longitude=77.1),'OUT1')
+        self.assertTrue(closed['closed'])
+        self.assertFalse(closed['pending_end'])
+        self.assertEqual(self.journey()['status'],'Completed')
+        self.assertEqual(self.journey()['end_location'],'12.1, 77.1')
+
+    def test_disabled_tracking_never_starts_or_ends_any_journey(self):
+        self.store.settings['enable_auto_attendance_trip_tracking']=0
+        self.frappe.get_doc(dict(doctype='NetraNext Journey',name='MANUAL',employee=self.employee,
+            flutter_journey_id='manual',tracking_source='manual',status='In Progress')).insert()
+        self.assertEqual(self.checkin(),{'skipped':'feature_disabled'})
+        self.assertIsNone(self.helper.handle_checkout_stored(dict(employee_id=self.employee,
+            time='2026-11-04 18:00:00'),'OUT1'))
+        self.assertEqual([j['name'] for j in self.store.get('NetraNext Journey')],['MANUAL'])
+        self.assertEqual(self.frappe.db.get_value('NetraNext Journey','MANUAL','status'),'In Progress')
+
+    def test_state_closes_a_session_whose_checkout_the_hook_missed(self):
+        self.checkin()
+        # Check-out stored, but its trip hook never ran (failure before the
+        # session was saved, or a check-out recorded outside the app).
+        self.record('OUT1','OUT',datetime(2026,11,4,18),latitude=12.2,longitude=77.2)
+        response=self.api.store_journey(dict(employee_id=self.employee,attendance_action='state'))
+        self.assertEqual(response['status'],'success')
+        session=response['data']['context']
+        self.assertTrue(session['closed'])
+        self.assertEqual(session['checkout_id'],'OUT1')
+        self.assertTrue(session['pending_end'])
+        self.assertEqual(self.journey()['status'],'Completed')
+        self.assertEqual(self.journey()['end_time'],'2026-11-04 18:00:00')
+        self.assertEqual(self.journey()['end_location'],'12.2, 77.2')
+        # The closed session no longer accepts odometer evidence.
+        self.assertEqual(self.odometer_photo('start',100)['status'],'error')
+
+    def test_missed_checkout_lets_the_next_checkin_start_its_own_trip(self):
+        self.checkin()
+        self.record('OUT1','OUT',datetime(2026,11,4,13))
+        self.record('IN2','IN',datetime(2026,11,4,14))
+        context=self.helper.handle_checkin_stored(dict(employee_id=self.employee,
+            latitude=12.3,longitude=77.3,tracking_accuracy=8),'IN2')
+        self.assertEqual(context['checkin_id'],'IN2')
+        self.assertTrue(context['pending_start'])
+        self.assertEqual(self.journey_named('attendance-IN1')['status'],'Completed')
+        self.assertEqual(self.journey_named('attendance-IN1')['end_time'],'2026-11-04 13:00:00')
+        self.assertEqual(self.journey_named('attendance-IN2')['status'],'In Progress')
+
+    def test_next_day_checkin_supersedes_a_forgotten_checkout(self):
+        self.checkin()
+        last_fix='2026-11-04T17:30:00.000Z'
+        self.frappe.db.set_value('NetraNext Journey',self.journey()['name'],'raw_gps_data',json.dumps([
+            dict(latitude=12.,longitude=77.,timestamp=self.t0),
+            dict(latitude=12.4,longitude=77.4,timestamp=last_fix)]))
+        self.record('IN2','IN',datetime(2026,11,5,9))
+        set_clock(datetime(2026,11,5,9))
+        context=self.helper.handle_checkin_stored(dict(employee_id=self.employee,
+            latitude=12.,longitude=77.,tracking_accuracy=8),'IN2')
+        # A fresh trip and odometer flow for the new day...
+        self.assertEqual(context['checkin_id'],'IN2')
+        self.assertTrue(context['pending_start'])
+        self.assertEqual(self.journey_named('attendance-IN2')['status'],'In Progress')
+        # ...and yesterday's trip ends where tracking last saw the employee.
+        old=self.helper.latest(self.employee,'IN1')[1]
+        self.assertTrue(old['closed'])
+        self.assertEqual(old['superseded_by'],'IN2')
+        self.assertEqual(self.journey_named('attendance-IN1')['status'],'Completed')
+        self.assertEqual(self.journey_named('attendance-IN1')['end_time'],'2026-11-04 17:30:00')
+        self.assertEqual(self.journey_named('attendance-IN1')['end_location'],'12.4, 77.4')
+
+    def test_forgotten_session_closes_even_when_tracking_was_turned_off(self):
+        self.checkin()
+        self.store.settings['enable_auto_attendance_trip_tracking']=0
+        self.record('IN2','IN',datetime(2026,11,5,9))
+        result=self.helper.handle_checkin_stored(dict(employee_id=self.employee,
+            latitude=12.,longitude=77.,tracking_accuracy=8),'IN2')
+        self.assertEqual(result,{'skipped':'feature_disabled'})
+        self.assertTrue(self.helper.latest(self.employee,'IN1')[1]['closed'])
+        self.assertEqual(self.journey()['status'],'Completed')
+        self.assertEqual(len(self.store.get('NetraNext Journey')),1)
+
+    def test_approved_next_day_checkin_is_not_blocked_by_a_forgotten_session(self):
+        self.checkin()
+        self.record('IN2','IN',datetime(2026,11,5,9),latitude=12.,longitude=77.,
+            custom_location_status='Pending Approval')
+        self.assertEqual(self.helper.handle_checkin_stored(dict(employee_id=self.employee,
+            latitude=12.,longitude=77.,tracking_accuracy=8),'IN2'),{'skipped':'approval_pending'})
+        self.frappe.db.set_value('Employee Checkin','IN2','custom_location_status','Approved')
+        started=self.helper.start_after_approval('IN2')
+        self.assertEqual(started['journey_id'],'attendance-IN2')
+        self.assertTrue(started['started_at'])
+        self.assertEqual(self.journey_named('attendance-IN1')['status'],'Completed')
+
 if __name__ == '__main__':
     unittest.main()
