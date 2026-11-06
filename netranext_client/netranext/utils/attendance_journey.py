@@ -69,7 +69,7 @@ def save(checkin_id, context):
 def payload(checkin_id, context):
     # Photos remain attached files; the dashboard only needs their status.
     result = {k: v for k, v in dict(context, checkin_id=checkin_id, enabled=enabled()).items()
-              if k not in ('start_photo', 'late_start_photo')}
+              if k not in ('start_photo', 'late_start_photo', 'end_photo')}
     result['late_start_photo_received'] = bool(context.get('late_start_photo'))
     receipt = context.get('start_reminder') or {}
     # Phones reconcile their persisted receipt after restarts/reinstalls
@@ -282,6 +282,11 @@ def prepare_auto_sync(data):
     from netranext_client.netranext.apis.v1.sync import _validate_odometer_sources, _save_odometer_photo
     from netranext_client.netranext.utils.odometer_units import normalize_odometer_fields
     # Start evidence belongs to the stored attendance context, never a stale heartbeat.
+    if context.get('end_photo'):
+        # So does end evidence once the dashboard end_photo action saved it:
+        # a heartbeat, retry or older app payload never replaces it.
+        for field in [k for k in data if k.startswith('end_odometer')]:
+            data.pop(field)
     end_evidence = {k: v for k, v in data.items() if k.startswith('end_odometer')}
     normalize_odometer_fields(end_evidence)
     data.update(end_evidence)
@@ -308,6 +313,11 @@ def prepare_auto_sync(data):
                     start_odometer_source=context['start_source'])
         if context.get('start_unit'):
             data.update(start_odometer_original=context['start_original'], start_odometer_unit=context['start_unit'])
+    if context.get('end_photo'):
+        data.update(end_odometer=context['end_reading'], end_odometer_photo=context['end_photo'],
+                    end_odometer_source=context.get('end_source'))
+        if context.get('end_unit'):
+            data.update(end_odometer_original=context['end_original'], end_odometer_unit=context['end_unit'])
     if data.get('end_odometer') is not None and data.get('end_odometer_photo'):
         if context.get('start_reading') is not None and float(data['end_odometer']) < float(context['start_reading']):
             frappe.throw('End odometer cannot be below start odometer.')
@@ -446,6 +456,41 @@ def action(data):
                        start_source=data.get('start_odometer_source'),
                        start_original=data.get('start_odometer_original'), start_unit=data.get('start_odometer_unit'),
                        start_captured_at=str(now_datetime()), pending_start=False)
+        save(checkin_id, context)
+        if context.get('started_at'):
+            try:
+                _write_journey(checkin_id, context)
+            except Exception:
+                save(checkin_id, previous)
+                raise
+    elif operation == 'end_photo':
+        # Same contract as start_photo, captured from the dashboard while the
+        # employee is still checked in; check-out then completes the trip
+        # with this evidence already attached.
+        if context.get('closed'):
+            frappe.throw('End odometer photo can only be submitted while checked in.')
+        if context.get('pending_start'):
+            frappe.throw('Submit the start odometer photo before the end odometer photo.')
+        from netranext_client.netranext.apis.v1.sync import _save_odometer_photo, _validate_odometer_sources
+        from netranext_client.netranext.utils.odometer_units import normalize_odometer_fields
+        normalize_odometer_fields(data)
+        reading = data.get('end_odometer')
+        if reading is None or not data.get('end_odometer_photo'):
+            frappe.throw('An odometer reading and photo are required.')
+        value = float(reading)
+        if not 0 <= value <= 9999999 * 1.609344:
+            frappe.throw('Invalid odometer reading.')
+        if context.get('start_reading') is not None and value < float(context['start_reading']):
+            frappe.throw('End odometer cannot be below start odometer.')
+        _validate_odometer_sources(data)
+        photo = _save_odometer_photo(data['end_odometer_photo'], context['journey_id'], 'end')
+        if not photo:
+            frappe.throw('Odometer photo could not be saved.')
+        previous = dict(context)
+        context.update(end_photo=photo, end_reading=value,
+                       end_source=data.get('end_odometer_source'),
+                       end_original=data.get('end_odometer_original'), end_unit=data.get('end_odometer_unit'),
+                       end_captured_at=str(now_datetime()), pending_end=False, end_photo_received=True)
         save(checkin_id, context)
         if context.get('started_at'):
             try:

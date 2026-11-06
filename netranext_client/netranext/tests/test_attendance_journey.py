@@ -464,5 +464,81 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(result['status'],'error')
         self.assertTrue(self.context()['pending_start'])
 
+    def odometer_photo(self, phase, reading, **kwargs):
+        request=dict(employee_id=self.employee, attendance_action=f'{phase}_photo', attendance_checkin='IN1',
+            **{f'{phase}_odometer': reading, f'{phase}_odometer_photo': 'image',
+               f'{phase}_odometer_source': 'detected'})
+        request.update(kwargs)
+        return self.api.store_journey(request)
+
+    def test_end_photo_while_checked_in_links_to_live_trip_and_checkout_keeps_it(self):
+        self.checkin()
+        self.assertEqual(self.odometer_photo('start', 100)['status'],'success')
+        result=self.odometer_photo('end', 150)
+        self.assertEqual(result['status'],'success')
+        state=result['data']['context']
+        self.assertFalse(state['pending_end'])
+        self.assertTrue(state['end_photo_received'])
+        self.assertNotIn('end_photo',state)
+        self.assertEqual(self.journey()['status'],'In Progress')
+        self.assertEqual(self.journey()['end_odometer'],150)
+        self.assertEqual(self.journey()['end_odometer_photo'],'/files/photo.jpg')
+        self.assertEqual(self.journey()['calculated_odometer_distance'],50)
+        # A live-trip heartbeat (or stale payload) never replaces the evidence.
+        self.api.store_journey(dict(employee_id=self.employee, journey_id='attendance-IN1',
+            tracking_source='attendance_auto', attendance_checkin='IN1', status='In Progress',
+            end_odometer=999, end_odometer_photo='other', end_odometer_source='detected'))
+        self.assertEqual(self.journey()['end_odometer'],150)
+        self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 18:00:00'),'OUT1')
+        self.assertEqual(self.journey()['status'],'Completed')
+        self.assertEqual(self.journey()['end_odometer'],150)
+        self.assertEqual(self.journey()['distance_km'],50)
+        self.assertFalse(self.context()['pending_end'])
+
+    def test_end_photo_needs_open_session_and_saved_start_photo(self):
+        self.checkin()
+        result=self.odometer_photo('end', 150)
+        self.assertEqual(result['status'],'error')
+        self.assertNotIn('end_photo_received',self.context())
+        self.odometer_photo('start', 100)
+        self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 18:00:00'),'OUT1')
+        result=self.odometer_photo('end', 150)
+        self.assertEqual(result['status'],'error')
+        self.assertNotIn('end_photo_received',self.context())
+        self.assertTrue(self.context()['pending_end'])
+
+    def test_rejected_or_unsaved_end_photo_keeps_end_pending(self):
+        self.checkin()
+        self.odometer_photo('start', 100)
+        self.assertEqual(self.odometer_photo('end', 90)['status'],'error')
+        self.api._save_odometer_photo = lambda *a: None
+        self.assertEqual(self.odometer_photo('end', 150)['status'],'error')
+        self.assertNotIn('end_photo_received',self.context())
+        self.assertIsNone(self.journey().get('end_odometer'))
+
+    def test_end_photo_keeps_original_miles_with_canonical_km(self):
+        self.checkin()
+        self.odometer_photo('start', 999, start_odometer_original=100, start_odometer_unit='mi')
+        result=self.odometer_photo('end', 0, end_odometer_original=110, end_odometer_unit='mi')
+        self.assertEqual(result['status'],'success')
+        self.assertAlmostEqual(self.context()['end_reading'],177.02784)
+        self.assertEqual(self.journey()['end_odometer_original'],110)
+        self.assertEqual(self.journey()['end_odometer_unit'],'mi')
+        self.assertAlmostEqual(self.journey()['calculated_odometer_distance'],16.09344)
+
+    def test_next_checkin_starts_a_fresh_odometer_flow(self):
+        self.checkin()
+        self.odometer_photo('start', 100)
+        self.odometer_photo('end', 150)
+        self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 18:00:00'),'OUT1')
+        self.frappe.get_doc(dict(doctype='Employee Checkin',name='IN2',employee=self.employee,
+            log_type='IN',time=datetime(2026,11,5,9))).insert()
+        context=self.helper.handle_checkin_stored(dict(employee_id=self.employee,
+            latitude=12.,longitude=77.,tracking_accuracy=8),'IN2')
+        self.assertEqual(context['checkin_id'],'IN2')
+        self.assertTrue(context['pending_start'])
+        self.assertFalse(context['closed'])
+        self.assertNotIn('end_photo_received',context)
+
 if __name__ == '__main__':
     unittest.main()
