@@ -102,6 +102,18 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(self.journey()['start_time'],'2026-11-04 09:00:00')
         self.assertEqual(self.journey()['start_location'],'12.0, 77.0')
 
+    def test_checkin_start_point_uses_the_app_route_timestamp_format(self):
+        # Desk Live Tracking formats point timestamps as strings; an epoch-ms
+        # number made its rendering throw, hiding the new attendance trip.
+        context=self.checkin()
+        start=json.loads(self.journey()['raw_gps_data'])[0]
+        self.assertIsInstance(start['timestamp'],str)
+        self.assertRegex(start['timestamp'],r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$')
+        self.assertEqual(self.helper._point_time(start['timestamp']),
+                         self.helper.local_time(context['anchor']['timestamp']))
+        self.assertEqual(start['label'],'Start')
+        self.assertEqual((start['latitude'],start['longitude']),(12.0,77.0))
+
     def test_disabled_setting_changes_nothing(self):
         self.store.settings['enable_auto_attendance_trip_tracking']=0
         self.assertEqual(self.checkin(),{'skipped':'feature_disabled'})

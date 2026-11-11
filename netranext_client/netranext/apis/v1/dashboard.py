@@ -159,6 +159,13 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
                     if raw_coords:
                         last_coord = raw_coords[-1]
                         last_update_time_str = last_coord.get("timestamp") or ""
+                        if isinstance(last_update_time_str, (int, float)):
+                            from datetime import timezone as utc_zone
+                            # Epoch-ms start point written at attendance
+                            # check-in by older code: the desk pages expect
+                            # an ISO string here (a number broke rendering).
+                            last_update_time_str = datetime.fromtimestamp(
+                                last_update_time_str / 1000, utc_zone.utc).isoformat()
                     
                     if not last_update_time_str:
                         # Fallback to journey's modified or start_time

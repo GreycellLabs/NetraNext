@@ -28,6 +28,10 @@
     // Helper function to format time to 12-hour (AM/PM) in local timezone
     function format_time_12hr(timeStr) {
         if (!timeStr || timeStr === '-' || timeStr === 'Pending...') return timeStr || '-';
+        // Attendance-trip start points written by older code carry epoch-ms
+        // numbers; String methods below would throw and abort rendering.
+        if (typeof timeStr === 'number') timeStr = new Date(timeStr).toISOString();
+        timeStr = String(timeStr);
         
         if (timeStr.includes('AM') || timeStr.includes('PM')) {
             return timeStr;

@@ -41,6 +41,12 @@ def epoch_ms(value):
     return dt.timestamp() * 1000
 
 
+def iso_utc(ms):
+    """Epoch ms -> '2026-11-11T05:09:29.000Z', the format the app syncs."""
+    return datetime.fromtimestamp(float(ms) / 1000, timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.') + \
+        f"{int(float(ms)) % 1000:03d}Z"
+
+
 def local_time(ms):
     return datetime.fromtimestamp(ms / 1000, timezone.utc).astimezone(
         ZoneInfo(frappe.utils.get_system_timezone())).replace(tzinfo=None)
@@ -93,8 +99,11 @@ def _write_journey(checkin_id, context, initial=False):
         status='Completed' if context.get('closed') else 'In Progress')
     if initial:
         point = context['anchor']
+        # Same point shape as app-synced routes: ISO-8601 UTC timestamp, not
+        # the context's epoch-ms number (desk pages format it as a string).
+        start = dict(point, label='Start', timestamp=iso_utc(point['timestamp']))
         data.update(start_location=f"{point['latitude']}, {point['longitude']}",
-                    raw_gps_data=json.dumps([dict(point, label='Start')]))
+                    raw_gps_data=json.dumps([start]))
     if context.get('closed'):
         data['end_time'] = context['end_time']
         point = context.get('end_point') or {}
