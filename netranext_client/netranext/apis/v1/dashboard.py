@@ -3,7 +3,7 @@ NetraNext Dashboard API
 Queries local database for dashboard data
 """
 import frappe
-from netranext_client.netranext.utils.trip_permissions import require_reader, scoped_filters
+from netranext_client.netranext.utils.trip_permissions import is_trip_manager, require_reader, scoped_filters
 from datetime import datetime
 
 
@@ -42,7 +42,11 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
     """
     Fetch dashboard data from local database
     """
-    require_reader()
+    reader = require_reader()
+    # NetraNext managers (incl. NetraNext Admin) see every employee; others
+    # only their own records (attendance used to be returned unscoped).
+    own_employees = None if is_trip_manager(reader) else \
+        frappe.get_all("Employee", filters={"user_id": reader}, pluck="name")
     try:
         # Check if ignore_dates is passed
         is_ignore_dates = False
@@ -220,18 +224,22 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
         # Get REAL attendance records
         attendance = []
         try:
-            attendance_sql = """
+            attendance_params = [f"{db_date_from} 00:00:00", f"{db_date_to} 23:59:59"]
+            employee_scope = ""
+            if own_employees is not None:
+                employee_scope = "AND employee IN %s" if own_employees else "AND 1=0"
+                if own_employees:
+                    attendance_params.append(tuple(own_employees))
+            attendance_sql = f"""
                 SELECT employee, MIN(time) as first_checkin, MAX(time) as last_checkin
                 FROM `tabEmployee Checkin`
-                WHERE time >= %s AND time <= %s
+                WHERE time >= %s AND time <= %s {employee_scope}
                 GROUP BY employee
                 ORDER BY first_checkin DESC
                 LIMIT 5
             """
 
-            attendance_records = frappe.db.sql(attendance_sql,
-                (f"{db_date_from} 00:00:00", f"{db_date_to} 23:59:59"),
-                as_dict=True)
+            attendance_records = frappe.db.sql(attendance_sql, tuple(attendance_params), as_dict=True)
 
             for att in attendance_records:
                 # Get employee name
@@ -295,9 +303,13 @@ def get_dashboard_data(date_from=None, date_to=None, employee_id=None, limit=100
 
         all_users = []
         try:
+            user_filters = {"enabled": 1, "user_type": "System User"}
+            if own_employees is not None:
+                # The user picker is a manager tool; others only see themselves.
+                user_filters["name"] = reader
             user_records = frappe.get_all(
                 "User",
-                filters={"enabled": 1, "user_type": "System User"},
+                filters=user_filters,
                 fields=["name", "full_name"],
                 order_by="full_name asc",
                 limit=200,

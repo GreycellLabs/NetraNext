@@ -55,7 +55,7 @@
  "icon": "fa fa-map-marker",
  "idx": 0,
  "is_submittable": 0,
- "modified": "2026-07-06 00:00:00",
+ "modified": "2026-11-11 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "NetraNext",
  "name": "NetraNext Location",
@@ -89,6 +89,18 @@
   {
    "read": 1,
    "role": "Employee"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "NetraNext Admin",
+   "share": 1,
+   "write": 1
   }
  ],
  "sort_field": "modified",

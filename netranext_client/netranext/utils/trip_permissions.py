@@ -7,7 +7,11 @@ Frappe's configured role and User Permissions still apply.
 import frappe
 
 JOURNEY = "NetraNext Journey"
-MANAGER_ROLES = frozenset({"System Manager", "HR Manager", "HR User"})
+# Roles that see every employee's NetraNext records (journeys, attendance,
+# live tracking). "NetraNext Admin" is the application's own admin role; it
+# was missing here, so admins were refused or cut down to their own records.
+# Employee-only users stay limited to records whose Employee.user_id is them.
+MANAGER_ROLES = frozenset({"System Manager", "HR Manager", "HR User", "NetraNext Admin"})
 
 
 def _user(user=None):
@@ -19,6 +23,14 @@ def is_trip_manager(user=None):
     return user == "Administrator" or bool(MANAGER_ROLES.intersection(frappe.get_roles(user)))
 
 
+def can_access_employee(employee, user=None):
+    """Managers may access any employee's NetraNext records; others only their own."""
+    user = _user(user)
+    if not user or user == "Guest" or not employee:
+        return False
+    return is_trip_manager(user) or bool(frappe.db.exists("Employee", {"name": employee, "user_id": user}))
+
+
 def require_reader(user=None):
     user = _user(user)
     if not user or user == "Guest":
@@ -27,15 +39,36 @@ def require_reader(user=None):
     return user
 
 
-def get_permission_query_conditions(user=None):
+def employee_record_conditions(doctype, user=None):
+    """List-query scope for employee-owned NetraNext records."""
     user = _user(user)
     if not user or user == "Guest":
         return "1=0"
     if is_trip_manager(user):
         return ""
-    return ("`tabNetraNext Journey`.`employee` IN "
+    return (f"`tab{doctype}`.`employee` IN "
             "(SELECT name FROM `tabEmployee` WHERE user_id = "
             + frappe.db.escape(user) + ")")
+
+
+def get_permission_query_conditions(user=None):
+    return employee_record_conditions(JOURNEY, user)
+
+
+# Same ownership rule for the other employee-owned NetraNext DocTypes. Their
+# `employee` link ignores HRMS's automatic Employee User Permission (which
+# otherwise cut NetraNext Admins who are also employees down to their own
+# records); these conditions keep ordinary employees on their own.
+def face_checkin_approval_conditions(user=None):
+    return employee_record_conditions("NetraNext Face Checkin Approval", user)
+
+
+def location_checkin_approval_conditions(user=None):
+    return employee_record_conditions("NetraNext Location Checkin Approval", user)
+
+
+def face_registration_request_conditions(user=None):
+    return employee_record_conditions("NetraNext Face Registration Request", user)
 
 
 def has_permission(doc, user=None, ptype=None, debug=False):

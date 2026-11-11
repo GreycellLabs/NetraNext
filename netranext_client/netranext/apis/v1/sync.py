@@ -1205,7 +1205,7 @@ def health_check():
 
 
 @frappe.whitelist(allow_guest=True)
-def get_employee_checkins(employee_id=None, from_date=None, to_date=None, limit=100):
+def get_employee_checkins(employee_id=None, from_date=None, to_date=None, limit=100, requester_user=None):
     """
     Get Employee Checkin records for a given employee from the tenant bench.
 
@@ -1225,6 +1225,15 @@ def get_employee_checkins(employee_id=None, from_date=None, to_date=None, limit=
             raise ValidationException("employee_id is required")
 
         validate_employee_exists(employee_id)
+
+        if requester_user is not None:
+            # Mobile proxy call: the hub passes the authenticated user. Only
+            # NetraNext managers (incl. NetraNext Admin) may read another
+            # employee's check-ins; the request's employee_id is untrusted.
+            from netranext_client.netranext.utils.trip_permissions import can_access_employee
+            if not requester_user or not frappe.db.get_value("User", requester_user, "enabled") \
+                    or not can_access_employee(employee_id, requester_user):
+                frappe.throw("You are not permitted to access this employee's attendance.", frappe.PermissionError)
 
         filters = [["employee", "=", employee_id]]
         if from_date:

@@ -189,11 +189,19 @@ after_install = "netranext_client.netranext.patches.register_pages.execute"
 # 	"Event": "frappe.desk.doctype.event.event.has_permission",
 # }
 
+# Employee-owned NetraNext records: managers (incl. NetraNext Admin) see all,
+# everyone else only records whose Employee.user_id is them.
 permission_query_conditions = {
     "NetraNext Journey": "netranext_client.netranext.utils.trip_permissions.get_permission_query_conditions",
+    "NetraNext Face Checkin Approval": "netranext_client.netranext.utils.trip_permissions.face_checkin_approval_conditions",
+    "NetraNext Location Checkin Approval": "netranext_client.netranext.utils.trip_permissions.location_checkin_approval_conditions",
+    "NetraNext Face Registration Request": "netranext_client.netranext.utils.trip_permissions.face_registration_request_conditions",
 }
 has_permission = {
     "NetraNext Journey": "netranext_client.netranext.utils.trip_permissions.has_permission",
+    "NetraNext Face Checkin Approval": "netranext_client.netranext.utils.trip_permissions.has_permission",
+    "NetraNext Location Checkin Approval": "netranext_client.netranext.utils.trip_permissions.has_permission",
+    "NetraNext Face Registration Request": "netranext_client.netranext.utils.trip_permissions.has_permission",
 }
 
 # DocType Class
