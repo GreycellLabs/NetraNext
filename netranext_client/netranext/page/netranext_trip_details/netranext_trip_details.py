@@ -27,11 +27,22 @@ def _system_zone():
     own Datetime fields (creation/modified) remain UTC and are handled
     separately.
     """
+    return _zone(frappe.utils.get_system_timezone())
+
+
+def _zone(key, default=timezone.utc):
+    """tzinfo usable with .replace(): zoneinfo when it can resolve `key`;
+    otherwise the zone's current offset from pytz (bundled data, knows
+    legacy names such as Asia/Calcutta) instead of silently using UTC."""
     try:
         from zoneinfo import ZoneInfo
-        return ZoneInfo(frappe.utils.get_system_timezone())
+        return ZoneInfo(str(key))
     except Exception:
-        return timezone.utc
+        try:
+            import pytz
+            return timezone(datetime.now(pytz.timezone(str(key))).utcoffset())
+        except Exception:
+            return default
 
 
 def _parse_dt(value):
@@ -73,8 +84,9 @@ def _viewer_day_to_storage_bounds(date_str, viewer_timezone):
     if not viewer_timezone:
         return None
     try:
-        from zoneinfo import ZoneInfo
-        viewer_zone = ZoneInfo(str(viewer_timezone))
+        viewer_zone = _zone(viewer_timezone, default=None)
+        if viewer_zone is None:
+            return None  # unknown viewer zone: keep the naive system-day filter
         day = datetime.strptime(str(date_str).strip(), "%Y-%m-%d")
         start = day.replace(tzinfo=viewer_zone).astimezone(_system_zone()).replace(tzinfo=None)
         end = (day + timedelta(days=1)).replace(tzinfo=viewer_zone).astimezone(_system_zone()).replace(tzinfo=None)

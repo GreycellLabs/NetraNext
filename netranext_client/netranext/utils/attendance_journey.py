@@ -6,7 +6,8 @@ sync.store_journey, including check-out. This module exposes no HTTP methods.
 import json
 import math
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+
+import pytz
 
 import frappe
 from frappe.utils import get_datetime, now_datetime
@@ -34,11 +35,20 @@ def unpack(value):
     return json.loads(value) if isinstance(value, str) and value else (value or {})
 
 
+def system_zone():
+    """The site's time zone via pytz (a Frappe dependency with its own
+    database). The stdlib zoneinfo needs OS/`tzdata` data and raised
+    ZoneInfoNotFoundError for legacy names such as 'Asia/Calcutta' on
+    current Ubuntu, which made every check-in hook fail."""
+    return pytz.timezone(frappe.utils.get_system_timezone() or 'UTC')
+
+
+def _aware(dt):
+    return system_zone().localize(dt) if dt.tzinfo is None else dt
+
+
 def epoch_ms(value):
-    dt = get_datetime(value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=ZoneInfo(frappe.utils.get_system_timezone()))
-    return dt.timestamp() * 1000
+    return _aware(get_datetime(value)).timestamp() * 1000
 
 
 def iso_utc(ms):
@@ -48,8 +58,7 @@ def iso_utc(ms):
 
 
 def local_time(ms):
-    return datetime.fromtimestamp(ms / 1000, timezone.utc).astimezone(
-        ZoneInfo(frappe.utils.get_system_timezone())).replace(tzinfo=None)
+    return datetime.fromtimestamp(ms / 1000, timezone.utc).astimezone(system_zone()).replace(tzinfo=None)
 
 
 def lock_employee(employee):
@@ -83,10 +92,7 @@ def payload(checkin_id, context):
     result['start_reminder_claimed'] = bool(receipt.get('claimed'))
     for key in ('started_at', 'end_time'):
         if result.get(key):
-            dt = get_datetime(result[key])
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=ZoneInfo(frappe.utils.get_system_timezone()))
-            result[key] = dt.isoformat()
+            result[key] = _aware(get_datetime(result[key])).isoformat()
     return result
 
 
@@ -96,6 +102,9 @@ def _write_journey(checkin_id, context, initial=False):
     data = dict(employee_id=context['employee'], user_id=context.get('user_id'),
         journey_id=context['journey_id'], attendance_checkin=checkin_id,
         tracking_source='attendance_auto', start_time=context['started_at'],
+        # Mandatory on NetraNext Journey (the hub sets it for manual trips).
+        # Without it every automatic start failed with MandatoryError.
+        journey_name=f"Attendance Trip {str(context['started_at'])[:16]}",
         status='Completed' if context.get('closed') else 'In Progress')
     if initial:
         point = context['anchor']
@@ -303,7 +312,7 @@ def _point_time(value):
     except ValueError:
         return None
     if dt.tzinfo is not None:
-        dt = dt.astimezone(ZoneInfo(frappe.utils.get_system_timezone())).replace(tzinfo=None)
+        dt = dt.astimezone(system_zone()).replace(tzinfo=None)
     return dt
 
 

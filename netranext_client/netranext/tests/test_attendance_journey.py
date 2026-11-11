@@ -102,6 +102,33 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(self.journey()['start_time'],'2026-11-04 09:00:00')
         self.assertEqual(self.journey()['start_location'],'12.0, 77.0')
 
+    def test_automatic_journey_has_its_mandatory_journey_name(self):
+        # journey_name is reqd on NetraNext Journey; the automatic start used
+        # to omit it, so Frappe rejected the insert and no trip ever started.
+        context=self.checkin()
+        self.assertNotIn('start_error',context)
+        self.assertTrue(context['started_at'])
+        self.assertEqual(self.journey()['journey_name'],'Attendance Trip 2026-11-04 09:00')
+
+    def test_site_time_zone_without_zoneinfo_data_still_starts_trip(self):
+        # Ubuntu 24.04 tzdata drops legacy aliases such as Asia/Calcutta and
+        # benches may lack the `tzdata` wheel: zoneinfo must not be needed.
+        # (The legacy name itself is exercised on a real bench by
+        # integration_tests/test_attendance_trip_live.py - the system pytz
+        # this offline runner may use reads the same OS data.)
+        import zoneinfo
+        def no_zone_data(key):
+            raise zoneinfo.ZoneInfoNotFoundError(key)
+        with patch.object(self.frappe.utils,'get_system_timezone',lambda:'Asia/Kolkata'), \
+             patch.object(zoneinfo,'ZoneInfo',no_zone_data):
+            context=self.checkin()
+            self.assertNotIn('start_error',context)
+            self.assertEqual(self.journey()['status'],'In Progress')
+            self.assertEqual(self.journey()['start_time'],'2026-11-04 09:00:00')
+            self.assertTrue(context['started_at'].endswith('+05:30'),context['started_at'])
+            start=json.loads(self.journey()['raw_gps_data'])[0]
+            self.assertEqual(start['timestamp'],'2026-11-04T03:30:00.000Z')
+
     def test_checkin_start_point_uses_the_app_route_timestamp_format(self):
         # Desk Live Tracking formats point timestamps as strings; an epoch-ms
         # number made its rendering throw, hiding the new attendance trip.
@@ -186,7 +213,7 @@ class AttendanceJourneyTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.store.tables['NetraNext Journey']=[]
                 self.store.tables['Employee Checkin']=[]
-                self.frappe.get_doc(dict(doctype='NetraNext Journey',name='EXISTING',employee=self.employee,
+                self.frappe.get_doc(dict(doctype='NetraNext Journey',name='EXISTING',journey_name='Existing trip',employee=self.employee,
                     flutter_journey_id='manual1',tracking_source=source,status='In Progress')).insert()
                 context=self.checkin('IN'+source)
                 self.assertIn('already in progress',context['start_error'])
@@ -231,7 +258,7 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(self.journey()['start_odometer'],999)
 
     def test_conflicting_trip_ending_never_backdates_an_attendance_start(self):
-        self.frappe.get_doc(dict(doctype='NetraNext Journey',name='EXISTING',employee=self.employee,
+        self.frappe.get_doc(dict(doctype='NetraNext Journey',name='EXISTING',journey_name='Existing trip',employee=self.employee,
             flutter_journey_id='manual1',tracking_source='manual',status='In Progress')).insert()
         context=self.checkin()
         self.assertTrue(context['start_conflict'])
@@ -344,7 +371,7 @@ class AttendanceJourneyTests(unittest.TestCase):
 
     def test_checkout_does_not_end_manual_trip(self):
         self.checkin()
-        self.frappe.get_doc(dict(doctype='NetraNext Journey',name='MANUAL',employee=self.employee,
+        self.frappe.get_doc(dict(doctype='NetraNext Journey',name='MANUAL',journey_name='Manual trip',employee=self.employee,
             flutter_journey_id='manual',status='In Progress')).insert()
         self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 10:00:00'),'OUT1')
         self.assertEqual(self.frappe.db.get_value('NetraNext Journey','MANUAL','status'),'In Progress')
@@ -392,7 +419,7 @@ class AttendanceJourneyTests(unittest.TestCase):
                 self.store.tables['NetraNext Journey']=[]
                 if source=='scheduled':
                     self.frappe.get_doc(dict(doctype='Scheduled Trip',name='SCHED1',status='Scheduled')).insert()
-                result=self.api.store_journey(dict(employee_id=self.employee,journey_id=source+'1',
+                result=self.api.store_journey(dict(employee_id=self.employee,journey_id=source+'1',journey_name='Journey '+source,
                     tracking_source=source,trip_id='SCHED1' if source=='scheduled' else None,
                     start_time='2026-11-04 09:00:00',status='In Progress',raw_gps_data='[]'))
                 self.assertEqual(result['status'],'success')
@@ -582,7 +609,7 @@ class AttendanceJourneyTests(unittest.TestCase):
 
     def test_disabled_tracking_never_starts_or_ends_any_journey(self):
         self.store.settings['enable_auto_attendance_trip_tracking']=0
-        self.frappe.get_doc(dict(doctype='NetraNext Journey',name='MANUAL',employee=self.employee,
+        self.frappe.get_doc(dict(doctype='NetraNext Journey',name='MANUAL',journey_name='Manual trip',employee=self.employee,
             flutter_journey_id='manual',tracking_source='manual',status='In Progress')).insert()
         self.assertEqual(self.checkin(),{'skipped':'feature_disabled'})
         self.assertIsNone(self.helper.handle_checkout_stored(dict(employee_id=self.employee,

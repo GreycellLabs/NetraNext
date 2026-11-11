@@ -16,8 +16,8 @@ def _system_tz_offset_suffix():
     a plain 'Z', which would misdeclare wall time as UTC.
     """
     try:
-        from zoneinfo import ZoneInfo
-        offset = datetime.now(ZoneInfo(frappe.utils.get_system_timezone())).utcoffset()
+        import pytz
+        offset = datetime.now(pytz.timezone(frappe.utils.get_system_timezone())).utcoffset()
         total = int(offset.total_seconds())
         sign = "+" if total >= 0 else "-"
         total = abs(total)

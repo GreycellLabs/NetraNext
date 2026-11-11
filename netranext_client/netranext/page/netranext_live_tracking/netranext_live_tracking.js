@@ -474,6 +474,10 @@
             pageWrapper.find('#total-count').text(trips.length + " active trips");
             pageWrapper.find('#view-stats').fadeIn();
         } else {
+            // Reset first: when the last trip ends (e.g. at check-out) the
+            // old count must not linger if the fade never completes.
+            pageWrapper.find('#total-dist').text("0.00 km");
+            pageWrapper.find('#total-count').text("0 active trips");
             pageWrapper.find('#view-stats').fadeOut();
         }
     }

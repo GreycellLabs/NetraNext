@@ -8,7 +8,9 @@ the attendance Journey helper and existing sync API to exercise the state machin
 - frappe.get_single + db.get_single_value over a settings dict
 - a controllable clock for now_datetime()/nowdate()
 """
+import json
 import re
+from pathlib import Path
 from datetime import datetime, timedelta
 
 
@@ -29,6 +31,22 @@ def parse_dt(value):
         return datetime.fromisoformat(text)
     except ValueError:
         return None
+
+
+class MandatoryError(Exception):
+    """Stand-in for frappe.MandatoryError (a ValidationError in Frappe)."""
+
+
+def _mandatory_fields():
+    # Real Frappe refuses to insert/save a document whose `reqd` fields are
+    # empty. Without this the fake silently accepted Journeys missing their
+    # mandatory journey_name - the bug that stopped every attendance trip.
+    path = Path(__file__).resolve().parents[1] / 'doctype' / 'netranext_journey' / 'netranext_journey.json'
+    fields = json.loads(path.read_text())['fields']
+    return {'NetraNext Journey': [f['fieldname'] for f in fields if f.get('reqd')]}
+
+
+MANDATORY = _mandatory_fields()
 
 
 class FakeDoc(dict):
@@ -71,8 +89,14 @@ class FakeDoc(dict):
         prefix = {"NetraNext Journey": "JOURNEY"}.get(doctype, "DOC")
         return f"{prefix}-{len(self._store.get(doctype)) + 1:05d}"
 
+    def _check_mandatory(self, doctype):
+        missing = [f for f in MANDATORY.get(doctype, []) if self.get(f) in (None, '')]
+        if missing:
+            raise MandatoryError(f"[{doctype}, {self.name or 'new'}]: {', '.join(missing)}")
+
     def insert(self, ignore_permissions=False):
         doctype = self["doctype"]
+        self._check_mandatory(doctype)
         if not self.name:
             self.name = self._autoname(doctype)
         self.setdefault("owner", "Administrator")
@@ -80,6 +104,7 @@ class FakeDoc(dict):
         return self
 
     def save(self, ignore_permissions=False):
+        self._check_mandatory(self["doctype"])
         self._store._touch(self["doctype"], self)
         return self
 

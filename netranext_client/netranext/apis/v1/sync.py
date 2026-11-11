@@ -1350,9 +1350,11 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None, requeste
             # the serialized schedule must carry the offset so the app can
             # convert to the device timezone instead of guessing.
             try:
-                from zoneinfo import ZoneInfo
+                import pytz
                 from datetime import datetime as _dt
-                offset = _dt.now(ZoneInfo(frappe.utils.get_system_timezone())).utcoffset()
+                # pytz ships its own zone data (zoneinfo needs OS/tzdata and
+                # cannot resolve legacy names such as Asia/Calcutta).
+                offset = _dt.now(pytz.timezone(frappe.utils.get_system_timezone())).utcoffset()
                 total = int(offset.total_seconds())
                 sign = "+" if total >= 0 else "-"
                 total = abs(total)
@@ -1425,11 +1427,13 @@ def get_journeys(employee_id=None, user_id=None, limit=50, status=None, requeste
 def _journey_time_iso(value):
     if not value:
         return None
+    import pytz
     from frappe.utils import get_datetime
-    from zoneinfo import ZoneInfo
     dt = get_datetime(value)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=ZoneInfo(frappe.utils.get_system_timezone()))
+        # pytz (bundled zone data) instead of zoneinfo, which raised
+        # ZoneInfoNotFoundError for legacy site zones and broke Trip Details.
+        dt = pytz.timezone(frappe.utils.get_system_timezone()).localize(dt)
     return dt.isoformat()
 
 
