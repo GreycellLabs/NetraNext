@@ -638,6 +638,17 @@ def _validate_odometer_sources(journey_data):
 
 
 @frappe.whitelist(allow_guest=True)
+def _notify_journey_changed():
+    """Nudge open desk Live Tracking pages to reload now instead of waiting
+    for their 10 s poll. Sent only when a journey is created or changes
+    status (never per GPS heartbeat). It carries no data: each page re-reads
+    through get_dashboard_data, which applies the caller's trip permissions."""
+    try:
+        frappe.publish_realtime("netranext_journey_changed", {}, after_commit=True)
+    except Exception:
+        pass
+
+
 def store_journey(journey_data):
     """
     Store GPS journey from central server
@@ -796,9 +807,11 @@ def store_journey(journey_data):
         if not existing_journey and is_in_progress and frappe.db.get_value(
                 'NetraNext Journey', {'employee': journey_data['employee_id'], 'status': 'In Progress'}, 'name'):
             raise ValidationException('Another trip is already in progress.')
+        previous_status = None
         if existing_journey:
             previous = frappe.db.get_value('NetraNext Journey', existing_journey,
                 ['status', 'tracking_source'], as_dict=True)
+            previous_status = previous.status
             if previous.tracking_source == 'attendance_auto' and not auto_journey:
                 raise ValidationException('Automatic journey requires attendance ownership.')
             if previous.status == 'Completed' and is_in_progress:
@@ -982,6 +995,8 @@ def store_journey(journey_data):
                 tenant_bench_logger.error(f"Scheduled Trip {trip_id} does not exist!", "JOURNEY_SYNC")
 
         tenant_bench_logger.info(f"Journey {action} for employee {journey_data['employee_id']}: {journey_doc.name}", "JOURNEY_SYNC")
+        if action == "stored" or previous_status != journey_doc.status:
+            _notify_journey_changed()
 
         return create_success_response(
             message="Journey stored successfully",

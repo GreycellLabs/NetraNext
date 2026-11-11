@@ -203,14 +203,20 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(len(self.store.get('NetraNext Journey')),1)
         self.assertNotIn('late_start_photo',self.context())
 
-    def test_start_photo_after_checkout_is_rejected(self):
+    def test_pending_start_photo_after_checkout_is_accepted_once(self):
         self.checkin()
         self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 18:00:00'),'OUT1')
         result=self.api.store_journey(dict(employee_id=self.employee,attendance_action='start_photo',attendance_checkin='IN1',
             start_odometer=999,start_odometer_photo='image',start_odometer_source='manual'))
-        self.assertEqual(result['status'],'error')
-        self.assertTrue(self.context()['pending_start'])
+        self.assertEqual(result['status'],'success')
+        self.assertFalse(self.context()['pending_start'])
         self.assertTrue(self.context()['pending_end'])
+        self.assertEqual(self.journey()['status'],'Completed')
+        self.assertEqual(self.journey()['start_odometer'],999)
+        again=self.api.store_journey(dict(employee_id=self.employee,attendance_action='start_photo',attendance_checkin='IN1',
+            start_odometer=1000,start_odometer_photo='image',start_odometer_source='manual'))
+        self.assertEqual(again['status'],'error')
+        self.assertEqual(self.journey()['start_odometer'],999)
 
     def test_conflicting_trip_ending_never_backdates_an_attendance_start(self):
         self.frappe.get_doc(dict(doctype='NetraNext Journey',name='EXISTING',employee=self.employee,
@@ -495,17 +501,18 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(self.journey()['distance_km'],50)
         self.assertFalse(self.context()['pending_end'])
 
-    def test_end_photo_needs_open_session_and_saved_start_photo(self):
+    def test_end_photo_needs_saved_start_photo_and_is_accepted_after_checkout(self):
         self.checkin()
         result=self.odometer_photo('end', 150)
         self.assertEqual(result['status'],'error')
         self.assertNotIn('end_photo_received',self.context())
         self.odometer_photo('start', 100)
         self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 18:00:00'),'OUT1')
-        result=self.odometer_photo('end', 150)
-        self.assertEqual(result['status'],'error')
-        self.assertNotIn('end_photo_received',self.context())
         self.assertTrue(self.context()['pending_end'])
+        result=self.odometer_photo('end', 150)
+        self.assertEqual(result['status'],'success')
+        self.assertTrue(self.context()['end_photo_received'])
+        self.assertFalse(self.context()['pending_end'])
 
     def test_rejected_or_unsaved_end_photo_keeps_end_pending(self):
         self.checkin()
@@ -585,8 +592,53 @@ class AttendanceJourneyTests(unittest.TestCase):
         self.assertEqual(self.journey()['status'],'Completed')
         self.assertEqual(self.journey()['end_time'],'2026-11-04 18:00:00')
         self.assertEqual(self.journey()['end_location'],'12.2, 77.2')
-        # The closed session no longer accepts odometer evidence.
-        self.assertEqual(self.odometer_photo('start',100)['status'],'error')
+        # The closed session still accepts the evidence it is missing, once,
+        # so the dashboard can finish the completed trip's odometer.
+        self.assertEqual(self.odometer_photo('start',100)['status'],'success')
+        self.assertEqual(self.odometer_photo('start',101)['status'],'error')
+
+    def test_end_photo_after_checkout_finishes_pending_evidence_on_completed_journey(self):
+        self.checkin()
+        self.assertEqual(self.odometer_photo('start', 100)['status'],'success')
+        self.record('OUT1','OUT',datetime(2026,11,4,18),latitude=12.2,longitude=77.2)
+        closed=self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 18:00:00',
+            latitude=12.2,longitude=77.2),'OUT1')
+        self.assertTrue(closed['closed'])
+        self.assertTrue(closed['pending_end'])
+        self.assertEqual(self.journey()['status'],'Completed')
+        # Below start is still rejected after check-out.
+        self.assertEqual(self.odometer_photo('end', 90)['status'],'error')
+        result=self.odometer_photo('end', 160)
+        self.assertEqual(result['status'],'success')
+        state=result['data']['context']
+        self.assertFalse(state['pending_end'])
+        self.assertTrue(state['closed'])
+        journey=self.journey()
+        self.assertEqual(journey['status'],'Completed')
+        self.assertEqual(journey['end_time'],'2026-11-04 18:00:00')
+        self.assertEqual(journey['end_odometer'],160)
+        self.assertEqual(journey['end_odometer_photo'],'/files/photo.jpg')
+        # Submitted end evidence is never replaced.
+        self.assertEqual(self.odometer_photo('end', 170)['status'],'error')
+        self.assertEqual(self.journey()['end_odometer'],160)
+
+    def test_late_end_photo_after_checkout_still_requires_start_first(self):
+        self.checkin()
+        self.record('OUT1','OUT',datetime(2026,11,4,18))
+        self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 18:00:00'),'OUT1')
+        self.assertEqual(self.odometer_photo('end', 150)['status'],'error')
+        self.assertEqual(self.odometer_photo('start', 100)['status'],'success')
+        self.assertEqual(self.odometer_photo('end', 150)['status'],'success')
+        self.assertEqual(self.journey()['start_odometer'],100)
+        self.assertEqual(self.journey()['end_odometer'],150)
+
+    def test_closed_session_without_odometer_requirement_accepts_no_photo(self):
+        self.store.settings['enable_odometer_reading']=0
+        self.checkin()
+        self.record('OUT1','OUT',datetime(2026,11,4,18))
+        closed=self.helper.handle_checkout_stored(dict(employee_id=self.employee,time='2026-11-04 18:00:00'),'OUT1')
+        self.assertFalse(closed['pending_end'])
+        self.assertEqual(self.odometer_photo('end', 150)['status'],'error')
 
     def test_missed_checkout_lets_the_next_checkin_start_its_own_trip(self):
         self.checkin()

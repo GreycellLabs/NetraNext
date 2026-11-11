@@ -176,6 +176,20 @@
 
         page.set_title('Live Tracking');
 
+        // Server nudge when a journey is created or changes status (e.g. an
+        // attendance check-in starting a trip, or check-out ending it). The
+        // event carries no data; the reload goes through the same
+        // permission-scoped API as polling. Debounced so a burst of
+        // check-ins triggers one reload.
+        var realtimeReloadTimer = null;
+        frappe.realtime.on('netranext_journey_changed', function() {
+            if (!$(wrapper).is(':visible')) return;
+            clearTimeout(realtimeReloadTimer);
+            realtimeReloadTimer = setTimeout(function() {
+                load_trip_data(true);
+            }, 1500);
+        });
+
         page.add_button(__('Refresh'), function() {
             load_trip_data(false);
         }, 'refresh');

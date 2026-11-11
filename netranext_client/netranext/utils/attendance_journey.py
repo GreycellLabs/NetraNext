@@ -503,6 +503,18 @@ def _claim_start_reminder(data, checkin_id, context):
     return dict(context=payload(checkin_id, context), enabled=enabled(), claimed=True)
 
 
+def _late_photo_allowed(context, phase):
+    """A checked-out session still accepts the odometer evidence it is
+    missing - exactly once per phase - so a completed attendance trip can be
+    finished from the dashboard after check-out. Submitted evidence is never
+    replaced, and sessions that never started a trip accept nothing."""
+    if not context.get('started_at') or not context.get('odometer_required'):
+        return False
+    if phase == 'start':
+        return bool(context.get('pending_start')) and not context.get('start_photo')
+    return bool(context.get('pending_end')) and not context.get('end_photo')
+
+
 def action(data):
     """Small actions on the existing store_journey request contract."""
     employee = data['employee_id']
@@ -532,7 +544,7 @@ def action(data):
     if operation == 'claim_start_odometer_reminder':
         return _claim_start_reminder(data, checkin_id, context)
     if operation == 'start_photo':
-        if context.get('closed'):
+        if context.get('closed') and not _late_photo_allowed(context, 'start'):
             frappe.throw('Start odometer photo can only be submitted while checked in.')
         from netranext_client.netranext.apis.v1.sync import _save_odometer_photo, _validate_odometer_sources
         from netranext_client.netranext.utils.odometer_units import normalize_odometer_fields
@@ -560,10 +572,10 @@ def action(data):
                 save(checkin_id, previous)
                 raise
     elif operation == 'end_photo':
-        # Same contract as start_photo, captured from the dashboard while the
-        # employee is still checked in; check-out then completes the trip
-        # with this evidence already attached.
-        if context.get('closed'):
+        # Same contract as start_photo. Captured from the dashboard either
+        # while checked in, or after check-out while the completed trip's end
+        # evidence is still pending (the dashboard End Odometer card).
+        if context.get('closed') and not _late_photo_allowed(context, 'end'):
             frappe.throw('End odometer photo can only be submitted while checked in.')
         if context.get('pending_start'):
             frappe.throw('Submit the start odometer photo before the end odometer photo.')
