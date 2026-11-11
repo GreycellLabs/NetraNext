@@ -565,7 +565,8 @@ def store_face(face_data):
         return handle_api_exception(e, "FACE_SYNC")
 
 
-@frappe.whitelist(allow_guest=True)
+# Internal helper only: never exposed over HTTP (it skips the
+# X-NetraNext-Token check every sync endpoint performs).
 def _save_odometer_photo(photo_data, journey_id, phase):
     """
     Persist a base64 data-URL odometer photo sent by the mobile app as a
@@ -637,7 +638,6 @@ def _validate_odometer_sources(journey_data):
         )
 
 
-@frappe.whitelist(allow_guest=True)
 def _notify_journey_changed():
     """Nudge open desk Live Tracking pages to reload now instead of waiting
     for their 10 s poll. Sent only when a journey is created or changes
@@ -649,6 +649,7 @@ def _notify_journey_changed():
         pass
 
 
+@frappe.whitelist(allow_guest=True)
 def store_journey(journey_data):
     """
     Store GPS journey from central server
@@ -1944,7 +1945,8 @@ def extend_trip(trip_id=None, reason=None, new_destination=None, requester_user=
     except Exception as e:
         return handle_api_exception(e, "JOURNEY_SYNC")
 
-@frappe.whitelist(allow_guest=True)
+# Internal helper only: never exposed over HTTP (it skips the
+# X-NetraNext-Token check every sync endpoint performs).
 def _get_holiday_data_for_employee(employee_id, from_date, to_date):
 	"""
 	Read the employee's Holiday List rows between the two dates.
