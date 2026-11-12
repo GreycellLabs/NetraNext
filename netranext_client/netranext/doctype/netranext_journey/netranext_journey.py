@@ -37,8 +37,11 @@ class NetraNextJourney(Document):
 			unit = self.get(f'{phase}_odometer_unit')
 			original = self.get(f'{phase}_odometer_original')
 			canonical = self.get(f'{phase}_odometer')
-			# Frappe Float fields default to zero even when no end photo exists.
-			if canonical is not None and (canonical != 0 or unit or self.get(f'{phase}_odometer_photo')):
+			# Frappe Float fields default to zero when no reading was submitted:
+			# no end photo yet, or a photo sent without a reading (read-only
+			# "unreadable" exception, which carries no unit). Every reading
+			# submitted with evidence has a unit, so a unit-less zero is "unset".
+			if canonical is not None and (canonical != 0 or unit or original):
 				data[f'{phase}_odometer'] = canonical
 			if unit or original:
 				data[f'{phase}_odometer_original'] = original

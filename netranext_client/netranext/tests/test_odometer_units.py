@@ -52,6 +52,21 @@ class JourneyUnitBoundaryTests(unittest.TestCase):
         journey.validate_odometer_units()
         self.assertNotIn('calculated_odometer_distance',journey)
 
+    def test_unreadable_end_photo_is_not_a_zero_reading(self):
+        # Read-only exception: end photo saved without a reading (source
+        # 'unreadable'); Frappe stores the unset Float as 0.
+        journey=self.Journey(start_odometer=258176,start_odometer_original=258176,start_odometer_unit='km',
+            start_odometer_photo='/files/start.jpg',end_odometer=0,end_odometer_photo='/files/end.jpg')
+        journey.validate_odometer_units()
+        self.assertNotIn('calculated_odometer_distance',journey)
+        self.assertEqual(journey.end_odometer,0)
+
+    def test_zero_with_unit_is_still_a_reading(self):
+        with self.assertRaises(ValueError):
+            self.Journey(start_odometer=100,start_odometer_original=100,start_odometer_unit='km',
+                end_odometer=0,end_odometer_original=0,end_odometer_unit='km',
+                end_odometer_photo='/files/end.jpg').validate_odometer_units()
+
     def test_zero_distance_is_valid_and_never_replaced_by_gps(self):
         journey=self.Journey(start_odometer_original=100,start_odometer_unit='mi',
             end_odometer_original=100,end_odometer_unit='mi',distance_km=99)

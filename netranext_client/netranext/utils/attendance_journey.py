@@ -533,6 +533,27 @@ def _late_photo_allowed(context, phase):
     return bool(context.get('pending_end')) and not context.get('end_photo')
 
 
+def _photo_reading(data, phase):
+    """Canonical KM reading for an attendance odometer photo, or None.
+
+    None is accepted only for the read-only exception flow: the employee
+    could not get an automatic reading (NetraNext Settings > Allow Manual
+    Odometer Reading Edit is off), so the photo is submitted with source
+    'unreadable' and an administrator records the value from the photo.
+    """
+    if not data.get(f'{phase}_odometer_photo'):
+        frappe.throw('An odometer photo is required.')
+    reading = data.get(f'{phase}_odometer')
+    if reading is None:
+        if data.get(f'{phase}_odometer_source') != 'unreadable':
+            frappe.throw('An odometer reading and photo are required.')
+        return None
+    value = float(reading)
+    if not 0 <= value <= 9999999 * 1.609344:
+        frappe.throw('Invalid odometer reading.')
+    return value
+
+
 def action(data):
     """Small actions on the existing store_journey request contract."""
     employee = data['employee_id']
@@ -567,12 +588,7 @@ def action(data):
         from netranext_client.netranext.apis.v1.sync import _save_odometer_photo, _validate_odometer_sources
         from netranext_client.netranext.utils.odometer_units import normalize_odometer_fields
         normalize_odometer_fields(data)
-        reading = data.get('start_odometer')
-        if reading is None or not data.get('start_odometer_photo'):
-            frappe.throw('An odometer reading and photo are required.')
-        value = float(reading)
-        if not 0 <= value <= 9999999 * 1.609344:
-            frappe.throw('Invalid odometer reading.')
+        value = _photo_reading(data, 'start')
         _validate_odometer_sources(data)
         photo = _save_odometer_photo(data['start_odometer_photo'], context['journey_id'], 'start')
         if not photo:
@@ -600,13 +616,8 @@ def action(data):
         from netranext_client.netranext.apis.v1.sync import _save_odometer_photo, _validate_odometer_sources
         from netranext_client.netranext.utils.odometer_units import normalize_odometer_fields
         normalize_odometer_fields(data)
-        reading = data.get('end_odometer')
-        if reading is None or not data.get('end_odometer_photo'):
-            frappe.throw('An odometer reading and photo are required.')
-        value = float(reading)
-        if not 0 <= value <= 9999999 * 1.609344:
-            frappe.throw('Invalid odometer reading.')
-        if context.get('start_reading') is not None and value < float(context['start_reading']):
+        value = _photo_reading(data, 'end')
+        if value is not None and context.get('start_reading') is not None and value < float(context['start_reading']):
             frappe.throw('End odometer cannot be below start odometer.')
         _validate_odometer_sources(data)
         photo = _save_odometer_photo(data['end_odometer_photo'], context['journey_id'], 'end')
