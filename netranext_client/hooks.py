@@ -247,6 +247,12 @@ scheduler_events = {
 		# closes the crash-between-commit-and-enqueue gap.
 		"*/2 * * * *": [
 			"netranext_client.netranext.utils.assignment_outbox.relay_pending_assignment_events"
+		],
+		# Attendance trips: keep the shift-end countdown current and end trips
+		# whose (possibly snoozed) deadline passed. Ends the journey only; it
+		# never records an attendance check-out.
+		"* * * * *": [
+			"netranext_client.netranext.utils.attendance_trip_end.process_due_auto_ends"
 		]
 	}
 }

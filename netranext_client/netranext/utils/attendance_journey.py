@@ -90,6 +90,12 @@ def payload(checkin_id, context):
     # Phones reconcile their persisted receipt after restarts/reinstalls
     # from this summary alone; claim identifiers stay server-side.
     result['start_reminder_claimed'] = bool(receipt.get('claimed'))
+    # Shift-end countdown / snooze / automatic end (attendance_trip_end).
+    from netranext_client.netranext.utils import attendance_trip_end
+    result['trip_end'] = attendance_trip_end.summary(context)
+    auto = context.get('auto_ended') or {}
+    result['auto_ended'] = bool(auto)
+    result['end_reason'] = auto.get('reason')
     for key in ('started_at', 'end_time'):
         if result.get(key):
             result[key] = _aware(get_datetime(result[key])).isoformat()
@@ -105,7 +111,7 @@ def _write_journey(checkin_id, context, initial=False):
         # Mandatory on NetraNext Journey (the hub sets it for manual trips).
         # Without it every automatic start failed with MandatoryError.
         journey_name=f"Attendance Trip {str(context['started_at'])[:16]}",
-        status='Completed' if context.get('closed') else 'In Progress')
+        status='Completed' if ended(context) else 'In Progress')
     if initial:
         point = context['anchor']
         # Same point shape as app-synced routes: ISO-8601 UTC timestamp, not
@@ -113,14 +119,40 @@ def _write_journey(checkin_id, context, initial=False):
         start = dict(point, label='Start', timestamp=iso_utc(point['timestamp']))
         data.update(start_location=f"{point['latitude']}, {point['longitude']}",
                     raw_gps_data=json.dumps([start]))
-    if context.get('closed'):
+    if ended(context):
         data['end_time'] = context['end_time']
         point = context.get('end_point') or {}
         if point.get('latitude') is not None and point.get('longitude') is not None:
             data['end_location'] = f"{point['latitude']}, {point['longitude']}"
+    if context.get('auto_ended'):
+        # Record why and when the trip ended on the Journey itself.
+        existing = frappe.db.get_value('NetraNext Journey',
+            {'employee': context['employee'], 'flutter_journey_id': context['journey_id']}, 'metadata')
+        try:
+            metadata = unpack(existing)
+        except ValueError:
+            metadata = {}
+        metadata = metadata if isinstance(metadata, dict) else {}
+        metadata['attendance'] = dict(metadata.get('attendance') or {}, **end_metadata(context))
+        data['metadata'] = json.dumps(metadata)
     result = store_journey(data)
     if result.get('status') != 'success':
         frappe.throw(result.get('message') or 'Unable to save attendance-linked journey.')
+
+
+def ended(context):
+    """The session's trip is over: checked out, or ended automatically
+    after the shift-end countdown (attendance itself stays open then)."""
+    return bool(context.get('closed') or context.get('auto_ended'))
+
+
+def end_metadata(context):
+    auto = context.get('auto_ended') or {}
+    if not auto:
+        return {}
+    return dict(end_reason=auto.get('reason'), auto_ended_at=auto.get('at'),
+                auto_end_executed_at=auto.get('executed_at'),
+                snooze_count=(context.get('trip_end') or {}).get('snooze_count', 0))
 
 
 def _ensure_started(checkin_id, context):
@@ -268,7 +300,12 @@ def start_after_approval(checkin_id):
 
 
 def _mark_closed(context, end_time, end_point, **marks):
-    context.update(closed=True, end_time=str(end_time), end_point=end_point, **marks)
+    if context.get('auto_ended'):
+        # The trip already ended automatically: the check-out closes the
+        # attendance session but never moves the journey's recorded end.
+        context.update(closed=True, checkout_time=str(end_time), **marks)
+    else:
+        context.update(closed=True, end_time=str(end_time), end_point=end_point, **marks)
     context['pending_end'] = bool(context.get('odometer_required') and context.get('started_at') and not context.get('end_photo_received'))
 
 
@@ -406,10 +443,12 @@ def prepare_auto_sync(data):
         data['end_odometer_photo'] = photo
     data['start_time'] = context['started_at']
     data['attendance_checkin'] = checkin_id
-    if data.get('status') == 'Completed' and not context.get('closed'):
+    if data.get('status') == 'Completed' and not ended(context):
         context.update(closed=True, end_time=str(data.get('end_time') or now_datetime()),
                        pending_end=bool(context.get('odometer_required')))
-    if context.get('closed'):
+    if ended(context):
+        # Includes the app's final sync after an automatic end: the trip
+        # stays Completed at the server's end time and attendance stays open.
         data.update(status='Completed', end_time=context['end_time'])
     # Dashboard capture happens after check-in starts the trip. Persist that
     # evidence on this same Journey and keep it authoritative on later syncs.
@@ -436,7 +475,7 @@ def prepare_auto_sync(data):
     metadata['attendance'] = dict(checkin_id=checkin_id, odometer_required=context.get('odometer_required'),
         pending_start=context.get('pending_start'), pending_end=context.get('pending_end'),
         start_source=context.get('start_source'), end_source=context.get('end_source'),
-        late_start_photo=context.get('late_start_photo'))
+        late_start_photo=context.get('late_start_photo'), **end_metadata(context))
     data['metadata'] = json.dumps(metadata)
     data['reason'] = REASON
     return context
@@ -568,6 +607,14 @@ def action(data):
             # never back-dates a start once the conflicting trip ends.
             if not context.get('start_conflict'):
                 _try_start(checkin_id, context)
+            # Backstop for the every-minute scheduler: keep the shift-end
+            # schedule current and end an overdue trip before reporting.
+            from netranext_client.netranext.utils import attendance_trip_end
+            try:
+                attendance_trip_end.refresh(checkin_id, context)
+                attendance_trip_end.auto_end_if_due(checkin_id, context)
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), 'Attendance Trip End')
         elif context and context.get('closed'):
             # Reconcile a checkout whose completion write failed: the
             # context is closed but the linked Journey is still running.
@@ -582,6 +629,11 @@ def action(data):
         frappe.throw('No attendance check-in to update.')
     if operation == 'claim_start_odometer_reminder':
         return _claim_start_reminder(data, checkin_id, context)
+    if operation == 'snooze_trip_end':
+        from netranext_client.netranext.utils import attendance_trip_end
+        outcome = attendance_trip_end.snooze(checkin_id, context, data.get('hours'),
+                                             version=data.get('version'), request_id=data.get('request_id'))
+        return dict(context=payload(checkin_id, context), enabled=enabled(), **outcome)
     if operation == 'start_photo':
         if context.get('closed') and not _late_photo_allowed(context, 'start'):
             frappe.throw('Start odometer photo can only be submitted while checked in.')

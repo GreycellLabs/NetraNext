@@ -3179,3 +3179,39 @@ def get_mobile_user_candidates(search=None, limit=50, offset=0):
             f"Legacy directory Employee enrichment failed ({type(error).__name__}); User directory remains valid.",
             "USER_DIRECTORY")
     return result
+
+
+@frappe.whitelist(allow_guest=True)
+def get_attendance_trip_end_reminders(lookahead_minutes=None):
+    """Shift-end / snooze follow-up reminders of running attendance trips.
+
+    Called by the hub's discovery job, which schedules an exact-time push for
+    each occurrence. The schedule itself (shift end, deadline, snoozes) is
+    owned here, on the attendance session (attendance_trip_end).
+    """
+    try:
+        validate_sync_request()
+        from netranext_client.netranext.utils import attendance_trip_end
+        try:
+            lookahead = max(10, int(lookahead_minutes))
+        except (TypeError, ValueError):
+            lookahead = 360
+        return create_success_response("Attendance trip reminders retrieved successfully",
+                                       attendance_trip_end.upcoming_reminders(lookahead))
+    except Exception as e:
+        return handle_api_exception(e, "EMPLOYEE_SYNC")
+
+
+@frappe.whitelist(allow_guest=True)
+def validate_attendance_trip_reminder(kind=None, checkin_id=None, version=None, expected_user_id=None):
+    """Re-validate an attendance trip reminder (start odometer / shift end /
+    snooze follow-up) at its exact send time: still checked in, trip still
+    running, evidence still pending, schedule version still current."""
+    try:
+        validate_sync_request()
+        from netranext_client.netranext.utils import attendance_trip_end
+        result = attendance_trip_end.validate_reminder(kind, checkin_id, version, expected_user_id)
+        frappe.db.commit()
+        return create_success_response("Attendance trip reminder validated", result)
+    except Exception as e:
+        return handle_api_exception(e, "EMPLOYEE_SYNC")

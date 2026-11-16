@@ -55,6 +55,9 @@ class AttendanceJourneyTests(unittest.TestCase):
             load('netranext_client.netranext.utils.'+name, ROOT/file)
         self.helper = load('netranext_client.netranext.utils.attendance_journey', ROOT/'utils/attendance_journey.py')
         sys.modules['netranext_client.netranext.utils'].attendance_journey = self.helper
+        self.trip_end = load('netranext_client.netranext.utils.attendance_trip_end', ROOT/'utils/attendance_trip_end.py')
+        self.trip_end._shift_lookup = lambda *a, **k: None  # no HRMS offline: no shift-end schedule
+        sys.modules['netranext_client.netranext.utils'].attendance_trip_end = self.trip_end
         self.api = load('netranext_client.netranext.apis.v1.sync', ROOT/'apis/v1/sync.py')
         self.api._save_odometer_photo = lambda value,*a: '/files/photo.jpg' if value else None
         self.employee = 'EMP1'
