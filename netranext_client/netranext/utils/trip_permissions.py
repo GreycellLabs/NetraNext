@@ -80,20 +80,29 @@ def face_registration_request_conditions(user=None):
 
 
 def has_permission(doc, user=None, ptype=None, debug=False):
-    """A veto only: never grant privileges absent from standard permissions."""
+    """Document-level ownership veto for employee-owned NetraNext records.
+
+    Must return an explicit bool. Frappe v16 treats ANY falsy hook result -
+    including None - as a denial (`if not controller_permission`), whereas
+    v15 ignored None. Returning None for "allowed" therefore denied every
+    document read on v16: "No permission for NetraNext Journey <name>" for
+    NetraNext Admin and for employees opening their own trips, while lists
+    (permission_query_conditions) still worked.
+
+    True does not grant anything: Frappe still requires the role permission
+    and applies User Permissions after this hook. False is the veto.
+    """
     user = _user(user)
     if not user or user == "Guest":
         return False
     if is_trip_manager(user):
-        return None
-    if not doc.employee or not frappe.db.exists("Employee", {"name": doc.employee, "user_id": user}):
-        return False
-    return None
+        return True
+    return bool(doc.employee and frappe.db.exists("Employee", {"name": doc.employee, "user_id": user}))
 
 
 def check_trip_read(doc, user=None):
     user = require_reader(user)
-    if has_permission(doc, user) is False:
+    if not has_permission(doc, user):
         frappe.throw("You are not permitted to access this trip.", frappe.PermissionError)
     frappe.has_permission(JOURNEY, "read", doc=doc, user=user, throw=True)
 

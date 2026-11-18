@@ -294,6 +294,10 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
             callback: function(r) {
                 var trips = r.message || [];
                 page.render_trips_table(trips);
+            },
+            error: function() {
+                $('#trips-table-body').html('<tr><td colspan="8" class="text-center text-muted" style="padding: 20px;">'
+                    + esc(__('Trips could not be loaded.')) + '</td></tr>');
             }
         });
     };
@@ -406,6 +410,8 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
         $('#view-single-trip-details').show();
         page.set_title(__('Trip Details: ') + trip_id);
 
+        page.show_single_trip_state(__('Loading trip details...'));
+
         ensureLeaflet(function() {
             frappe.call({
                 method: 'netranext_client.netranext.page.netranext_trip_details.netranext_trip_details.get_trip_telemetry_details',
@@ -414,11 +420,25 @@ frappe.pages['netranext-trip-details'].on_page_load = function(wrapper) {
                     if (r.message) {
                         page.render_single_trip_details(r.message);
                     } else {
-                        frappe.msgprint(__('Unable to load details for trip ') + trip_id);
+                        page.show_single_trip_state(__('Unable to load details for trip {0}.', [trip_id]), true);
                     }
+                },
+                // Permission or server errors: Frappe already shows the
+                // server's message; never leave the page on "Loading...".
+                error: function() {
+                    page.show_single_trip_state(__('Trip details could not be loaded. You may not have access to trip {0}.', [trip_id]), true);
                 }
             });
         });
+    };
+
+    page.show_single_trip_state = function(message, isError) {
+        var box = $('<div class="timeline-event-box"></div>').text(message);
+        if (isError) {
+            box.css('color', 'var(--red-600, #dc2626)');
+        }
+        $('#single-trip-timeline-list').empty()
+            .append($('<li class="timeline-event-item"></li>').append(box));
     };
 
     page.render_single_trip_details = function(data) {

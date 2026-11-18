@@ -110,8 +110,9 @@ class TripPermissionTests(unittest.TestCase):
         self.assertIn("'alice'' OR 1=1 --'", self.policy.get_permission_query_conditions("alice' OR 1=1 --"))
 
     def test_standard_document_hook_vetoes_other_employee(self):
-        self.assertIsNone(self.policy.has_permission(self.trips['TRIP-A']))
-        self.assertFalse(self.policy.has_permission(self.trips['TRIP-B']))
+        # Explicit True, never None: Frappe v16 treats None as a denial.
+        self.assertIs(self.policy.has_permission(self.trips['TRIP-A']), True)
+        self.assertIs(self.policy.has_permission(self.trips['TRIP-B']), False)
 
     def test_extra_non_hr_role_does_not_grant_cross_employee_access(self):
         self.roles['alice@example.com'].append('Expense Approver')
@@ -120,7 +121,7 @@ class TripPermissionTests(unittest.TestCase):
     def test_hr_admin_ownership_bypass_does_not_grant_permissions(self):
         for user in ('hr@example.com', 'admin@example.com', 'Administrator'):
             self.assertEqual(self.policy.get_permission_query_conditions(user), '')
-            self.assertIsNone(self.policy.has_permission(self.trips['TRIP-B'], user))
+            self.assertIs(self.policy.has_permission(self.trips['TRIP-B'], user), True)
         self.permission = False
         with self.assertRaises(Denied):
             self.policy.check_trip_read(self.trips['TRIP-B'], 'hr@example.com')

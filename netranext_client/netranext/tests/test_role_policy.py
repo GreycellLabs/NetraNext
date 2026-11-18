@@ -79,12 +79,22 @@ class RolePolicyTests(unittest.TestCase):
         other_trip = types.SimpleNamespace(employee='EMP-2')
         own_trip = types.SimpleNamespace(employee='EMP-1')
         self.assertIs(self.policy.has_permission(other_trip, 'emp@x'), False)
-        self.assertIsNone(self.policy.has_permission(own_trip, 'emp@x'))
+        self.assertIs(self.policy.has_permission(own_trip, 'emp@x'), True)
 
     def test_admin_reads_any_employee_trip(self):
         trip = types.SimpleNamespace(employee='EMP-2')
-        self.assertIsNone(self.policy.has_permission(trip, 'admin@x'))  # no veto
+        self.assertIs(self.policy.has_permission(trip, 'admin@x'), True)  # no veto
         self.assertTrue(self.policy.can_access_employee('EMP-1', 'admin@x'))
+
+    def test_ownership_hook_always_returns_a_bool(self):
+        # Frappe v16 (production) denies on ANY falsy hook result, including
+        # None: returning None for "allowed" caused "No permission for
+        # NetraNext Journey <name>" for admins and for employees' own trips.
+        trips = [types.SimpleNamespace(employee=e) for e in ('EMP-1', 'EMP-2', 'EMP-ADMIN', None)]
+        for user in list(ROLES) + ['Guest', None]:
+            for trip in trips:
+                with self.subTest(user=user, employee=trip.employee):
+                    self.assertIsInstance(self.policy.has_permission(trip, user or 'Guest'), bool)
 
     def test_existing_hr_roles_keep_access(self):
         self.assertTrue(self.policy.is_trip_manager('hr@x'))

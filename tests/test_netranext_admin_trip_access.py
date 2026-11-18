@@ -100,7 +100,9 @@ class FrappePermissionModel:
     def doc_read(self, user, doc, ptype="read"):
         hook = registered_hook("has_permission", JOURNEY)
         assert hook == POLICY + ".has_permission", hook
-        if self.test.policy.has_permission(doc, user=user, ptype=ptype) is False:
+        # Frappe v16 (production): any falsy hook result - None included -
+        # denies (`if not controller_permission`). v15 only denied on False.
+        if not self.test.policy.has_permission(doc, user=user, ptype=ptype):
             return False
         return self.role_read(user, ptype, doc) and self.user_permission_ok(user, doc)
 
