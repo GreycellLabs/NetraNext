@@ -12,6 +12,14 @@ JOURNEY = "NetraNext Journey"
 # was missing here, so admins were refused or cut down to their own records.
 # Employee-only users stay limited to records whose Employee.user_id is them.
 MANAGER_ROLES = frozenset({"System Manager", "HR Manager", "HR User", "NetraNext Admin"})
+# NetraNext DocTypes scoped by their `employee` link (hooks.py registers the
+# query/document hooks below for each; their JSON grants NetraNext Admin).
+EMPLOYEE_OWNED_DOCTYPES = (
+    JOURNEY,
+    "NetraNext Face Checkin Approval",
+    "NetraNext Location Checkin Approval",
+    "NetraNext Face Registration Request",
+)
 
 
 def _user(user=None):
