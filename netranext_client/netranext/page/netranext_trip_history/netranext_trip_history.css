@@ -52,7 +52,7 @@
 /* Sidebar Styling */
 .trip-sidebar {
     width: 400px;
-    background: white;
+    background: var(--card-bg, #ffffff);
     border-right: 1px solid var(--t-border);
     display: flex;
     flex-direction: column;
@@ -62,60 +62,51 @@
 .trip-list-container {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
+    padding: 0;
 }
 
-/* Trip Card */
-.trip-card {
-    background: #ffffff;
-    border: 1px solid var(--t-border);
-    border-radius: 12px;
-    padding: 16px;
-    margin-bottom: 12px;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-    animation: fadeIn 0.3s ease-out forwards;
+/* Trip list: rendered with Frappe's standard list-view classes
+   (frappe-list / list-row-head / list-row). Only sidebar-specific
+   overrides live here; everything else comes from Frappe's desk CSS. */
+.trip-sidebar .frappe-list {
+    padding: 0 var(--padding-xs);
 }
 
-.trip-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    border-color: var(--t-primary);
+.trip-sidebar .frappe-list .result {
+    /* Frappe sizes .result for a full page; the sidebar scrolls instead. */
+    min-height: 0;
 }
 
-.trip-card.selected {
-    background: var(--t-primary-light);
-    border-color: var(--t-primary);
+/* Narrow-sidebar column sizing. Frappe gives .level-right 20% of the row
+   and 15px column gaps, which leaves almost nothing for the User column in a
+   400px sidebar. Fixed widths keep header and rows aligned and keep the
+   status pill / distance untruncated; User takes the rest (ellipsis). */
+.trip-sidebar .list-row .level-left,
+.trip-sidebar .list-row-head .level-left {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
-.trip-card-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 8px;
+.trip-sidebar .list-row .level-right,
+.trip-sidebar .list-row-head .level-right {
+    flex: 0 0 72px;
+    justify-content: flex-end;
 }
 
-.trip-card-emp {
-    font-weight: 700;
-    font-size: 15px;
-    color: var(--t-text);
+.trip-sidebar .list-row-col {
+    margin-right: 10px;
 }
 
-.trip-card-dist {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--t-primary);
-    background: var(--t-primary-light);
-    padding: 2px 8px;
-    border-radius: 6px;
+.trip-sidebar .list-row-col.trip-col-status {
+    flex: 0 0 112px;
 }
 
-.trip-card-body {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 13px;
-    color: var(--t-text-muted);
+.trip-sidebar .list-row-col.trip-col-distance {
+    flex: 0 0 72px;
+}
+
+.trip-sidebar .list-row-container.selected .list-row {
+    background-color: var(--highlight-color);
 }
 
 /* Map Section */
@@ -153,19 +144,6 @@
 }
 
 /* Inputs & Buttons */
-.j-input {
-    padding: 8px 12px;
-    border: 1px solid var(--t-border);
-    border-radius: 8px;
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s;
-}
-
-.j-input:focus {
-    border-color: var(--t-primary);
-}
-
 .j-btn {
     padding: 8px 16px;
     border-radius: 8px;
@@ -249,18 +227,6 @@
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
 }
 
-/* Animations */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
 /* Loader */
 .loader-spinner {
     width: 40px;
@@ -280,6 +246,16 @@
 @media (max-width: 1024px) {
     .trip-sidebar {
         width: 320px;
+    }
+}
+
+/* 320px sidebar: drop the date column (still in the row tooltip and the
+   date filter) so the User column keeps usable width. Below 768px the
+   sidebar is full width again and Frappe's hidden-xs hides Status instead. */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .trip-sidebar .list-row .level-right,
+    .trip-sidebar .list-row-head .level-right {
+        display: none;
     }
 }
 

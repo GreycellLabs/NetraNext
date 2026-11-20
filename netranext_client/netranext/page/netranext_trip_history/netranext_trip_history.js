@@ -14,7 +14,7 @@
     };
 
     var currentFilters = {
-        employee: '',
+        user: '',
         date: ''
     };
 
@@ -215,11 +215,11 @@
                     <!-- Sidebar -->
                     <div class="trip-sidebar">
                         <div class="filter-bar">
-                            <select id="employee-filter" class="j-input" style="flex: 1; min-width: 0;">
-                                <option value="">All Employees</option>
+                            <select id="user-filter" class="form-control input-xs" style="flex: 1; min-width: 0;">
+                                <option value="">${__('All Users')}</option>
                             </select>
-                            <input type="date" id="date-filter" class="j-input" style="width: 130px;">
-                            <button class="j-btn" id="clear-filters" style="padding: 8px 12px;">Clear</button>
+                            <input type="date" id="date-filter" class="form-control input-xs" style="width: 130px;">
+                            <button class="btn btn-default btn-xs" id="clear-filters">${__('Clear')}</button>
                         </div>
 
                         <div class="trip-list-container" id="trip-list-content">
@@ -258,7 +258,7 @@
         mapViewData.layers = {};
         mapViewData.markers = {};
 
-        currentFilters.employee = '';
+        currentFilters.user = '';
         currentFilters.date = ''; // Show all by default
 
         setup_event_handlers();
@@ -374,7 +374,7 @@
                     });
 
                     mapViewData.trips = tripsToShow;
-                    populate_employee_filter();
+                    populate_user_filter();
                     update_view();
 
                     apply_route_options();
@@ -469,12 +469,23 @@
     function apply_route_options() {
         var options = frappe.route_options || {};
         var targetId = options.trip_id || options.journey_id || null;
+        // 'user' is the trip owner's User ID. 'employee' is still accepted
+        // because the NetraNext Journey form links here with an Employee ID;
+        // it maps to that employee's user once trips are loaded.
+        var targetUser = options.user || options.user_id || null;
         var targetEmp = options.employee || null;
         var targetDate = options.date || null;
 
-        if (targetEmp) {
-            currentFilters.employee = targetEmp;
-            pageWrapper.find('#employee-filter').val(targetEmp);
+        if (!targetUser && targetEmp) {
+            var empTrip = (mapViewData.trips || []).find(function(t) {
+                return t.employee === targetEmp;
+            });
+            targetUser = empTrip ? trip_owner_key(empTrip) : targetEmp;
+        }
+
+        if (targetUser) {
+            currentFilters.user = targetUser;
+            pageWrapper.find('#user-filter').val(targetUser);
         }
 
         if (targetDate) {
@@ -501,21 +512,34 @@
         pageWrapper.find('#trip-list-content').html( /* nosemgrep */ errorHtml);
     }
 
-    function populate_employee_filter() {
-        var employees = {};
+    // Trip owner = the User linked to the trip. The API resolves user_id from
+    // the journey (falling back to the Employee's linked user) and user_name
+    // from User.full_name. Trips with no linked user fall back to the employee.
+    function trip_owner_key(t) {
+        return t.user_id || t.employee || '';
+    }
+
+    function trip_owner_label(t) {
+        return t.user_name || t.user_id || t.employee_name || t.employee || '-';
+    }
+
+    function populate_user_filter() {
+        var users = {};
         mapViewData.trips.forEach(function (t) {
-            var empId = t.employee || t.user_id;
-            if (empId) {
-                employees[empId] = t.employee_name || empId;
+            var key = trip_owner_key(t);
+            if (key) {
+                users[key] = trip_owner_label(t);
             }
         });
 
-        var select = pageWrapper.find('#employee-filter');
-        var currentVal = select.val();
+        var select = pageWrapper.find('#user-filter');
+        var currentVal = select.val() || currentFilters.user;
         select.find('option:not(:first)').remove();
 
-        Object.keys(employees).sort().forEach(function (empId) {
-            select.append( /* nosemgrep */ '<option value="' + empId + '">' + employees[empId] + '</option>');
+        Object.keys(users).sort(function(a, b) {
+            return String(users[a]).localeCompare(String(users[b]));
+        }).forEach(function (key) {
+            $('<option>').attr('value', key).text(users[key]).appendTo(select);
         });
 
         if (currentVal) {
@@ -705,7 +729,7 @@
         return '<div class="rich-popup">' +
             '<div class="popup-header" style="border-left: 4px solid ' + accentColor + ';">' +
             '<div class="popup-title">' + title + '</div>' +
-            '<div class="popup-subtitle">' + (t.employee_name || t.employee) + '</div>' +
+            '<div class="popup-subtitle">' + frappe.utils.escape_html(trip_owner_label(t)) + '</div>' +
             '</div>' +
             '<div class="popup-body">' +
             '<div class="popup-info-row">' +
@@ -771,8 +795,8 @@
     }
 
     function setup_event_handlers() {
-        pageWrapper.find('#employee-filter').on('change', function() {
-            currentFilters.employee = $(this).val();
+        pageWrapper.find('#user-filter').on('change', function() {
+            currentFilters.user = $(this).val();
             load_trip_data();
         });
 
@@ -782,9 +806,9 @@
         });
 
         pageWrapper.find('#clear-filters').on('click', function() {
-            pageWrapper.find('#employee-filter').val('');
+            pageWrapper.find('#user-filter').val('');
             pageWrapper.find('#date-filter').val('');
-            currentFilters.employee = '';
+            currentFilters.user = '';
             currentFilters.date = '';
             load_trip_data();
         });
@@ -831,81 +855,126 @@
         var f = currentFilters;
 
         return trips.filter(function (t) {
-            var matchEmp = !f.employee || t.employee === f.employee || t.user_id === f.employee;
+            var matchUser = !f.user || trip_owner_key(t) === f.user || t.employee === f.user;
 
             var rawDateStr = t.start_time || t.posting_date || '';
             var tDate = formatDate(rawDateStr);
             var matchDate = !f.date || tDate === f.date;
 
-            return matchEmp && matchDate;
+            return matchUser && matchDate;
         });
     }
 
+    // Same indicator colours as the NetraNext Journey list view
+    // (netranext_journey_list.js) so status pills read the same everywhere.
+    var STATUS_INDICATOR = {
+        'Completed': 'green',
+        'In Progress': 'orange',
+        'Cancelled': 'red'
+    };
+
+    // Renders the trip list with Frappe's own list-view markup/classes
+    // (frappe-list > result > list-row-head / list-row-container > list-row)
+    // so it inherits the standard DocType list styling.
     function render_trip_list() {
         var trips = get_filtered_trips();
         var container = pageWrapper.find('#trip-list-content');
+        var esc = frappe.utils.escape_html;
         container.empty();
 
         if (trips.length === 0) {
-            container.append( /* nosemgrep */ 
-                '<div style="text-align: center; padding: 48px 20px; color: var(--t-text-muted);">' +
-                '<div style="font-size: 40px; margin-bottom: 12px;">📍</div>' +
-                '<div style="font-weight: 600;">No trips found.</div>' +
-                '<div style="font-size: 12px; margin-top: 4px;">Try selecting another date or employee.</div>' +
+            container.append( /* nosemgrep */
+                '<div class="no-result text-muted text-center" style="padding: 48px 20px;">' +
+                '<p>' + __('No trips found.') + '</p>' +
+                '<p class="small">' + __('Try selecting another date or user.') + '</p>' +
                 '</div>'
             );
             return;
         }
 
+        var $result = $('<div class="result"></div>');
+        $result.append( /* nosemgrep */
+            '<header class="level list-row-head text-muted">' +
+                '<div class="level-left list-header-subject">' +
+                    '<div class="list-row-col ellipsis list-subject level">' +
+                        '<span class="level-item">' + __('User') + '</span>' +
+                    '</div>' +
+                    '<div class="list-row-col ellipsis hidden-xs trip-col-status"><span>' + __('Status') + '</span></div>' +
+                    '<div class="list-row-col ellipsis text-right trip-col-distance"><span>' + __('Distance') + '</span></div>' +
+                '</div>' +
+                '<div class="level-right">' +
+                    '<span class="list-count"><span>' +
+                        __('{0} of {1}', [trips.length, (mapViewData.trips || []).length]) +
+                    '</span></span>' +
+                '</div>' +
+            '</header>'
+        );
+
         trips.forEach(function(t) {
             var id = t.name || t.trip_id;
             var isSelected = mapViewData.selectedId === id;
-            
-            var startLoc = t.start_location || 'Start point';
             var isLive = t.status === 'In Progress';
-            var endLoc = isLive 
-                ? ((t.coordinates && t.coordinates.length > 0) ? t.coordinates[t.coordinates.length - 1].join(', ') : 'Unknown location')
-                : (t.end_location || 'End point');
+            var status = t.status || 'Completed';
+            var indicator = STATUS_INDICATOR[status] || 'gray';
+            var owner = trip_owner_label(t);
+            var ownerTitle = t.user_id && t.user_id !== owner ? owner + ' (' + t.user_id + ')' : owner;
+            var timeRange = format_time_12hr(t.start_time) + ' - ' +
+                (isLive ? __('In Progress') : format_time_12hr(t.end_time));
+            var tripDate = formatDate(t.start_time);
+            var displayDate = (tripDate && tripDate !== '-' && frappe.datetime && frappe.datetime.str_to_user)
+                ? frappe.datetime.str_to_user(tripDate) : tripDate;
+            var distance = (parseFloat(t.distance_km) || 0).toFixed(2) + ' km';
 
-            var card = $('<div class="trip-card' + (isSelected ? ' selected' : '') + '" data-id="' + id + '">' +
-                '<div class="trip-card-header" style="align-items: center; margin-bottom: 8px;">' +
-                '<div class="trip-card-emp" style="flex: 1; display: flex; align-items: center; gap: 8px;">' + 
-                '<span>' + (t.employee_name || t.employee) + '</span>' +
-                (isLive ? '<span class="card-live-badge" style="background: #ecfdf5; color: #10b981; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;"><span class="card-live-dot" style="width: 6px; height: 6px; background-color: #10b981; border-radius: 50%; display: inline-block;"></span>Live</span>' : '') +
-                '</div>' +
-                '<div style="font-size: 12px; color: var(--t-text-muted); margin: 0 12px; font-weight: 500;">' +
-                format_time_12hr(t.start_time) + ' - ' + (isLive ? 'In Progress' : format_time_12hr(t.end_time)) +
-                '</div>' +
-                '<div class="trip-card-dist" style="margin-left: auto;">' + (t.distance_km || 0) + ' km</div>' +
-                '</div>' +
-                '<div class="trip-card-body" style="gap: 4px;">' +
-                '<div style="font-size: 11px; display: flex; align-items: center; gap: 6px;">' +
-                '<span style="color: var(--t-success); font-size: 10px;">🟢</span>' +
-                '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + format_location_display(startLoc) + '</span>' +
-                '</div>' +
-                '<div style="font-size: 11px; display: flex; align-items: center; gap: 6px;">' +
-                '<span style="color: ' + (isLive ? '#3b82f6' : 'var(--t-danger)') + '; font-size: 10px;">' + (isLive ? '🔵' : '🔴') + '</span>' +
-                '<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + format_location_display(endLoc) + '</span>' +
-                '</div>' +
-                '</div>' +
+            var $row = $(
+                '<div class="list-row-container' + (isSelected ? ' selected' : '') + '" tabindex="1">' +
+                    '<div class="level list-row">' +
+                        '<div class="level-left ellipsis">' +
+                            '<div class="list-row-col ellipsis list-subject level">' +
+                                '<span class="level-item bold ellipsis">' +
+                                    '<a class="ellipsis"></a>' +
+                                '</span>' +
+                            '</div>' +
+                            '<div class="list-row-col hidden-xs ellipsis trip-col-status">' +
+                                '<span class="indicator-pill ' + indicator + ' filterable ellipsis">' +
+                                    '<span class="ellipsis">' + esc(__(status)) + '</span>' +
+                                '</span>' +
+                            '</div>' +
+                            '<div class="list-row-col ellipsis text-right trip-col-distance">' + esc(distance) + '</div>' +
+                        '</div>' +
+                        '<div class="level-right text-muted ellipsis">' +
+                            '<div class="level-item list-row-activity">' +
+                                '<span class="frappe-timestamp"></span>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="list-row-border"></div>' +
                 '</div>'
             );
+            $row.attr('data-id', id);
+            $row.find('.list-row').attr('title', ownerTitle + ' \u00b7 ' + displayDate + ' \u00b7 ' + timeRange);
+            $row.find('.list-subject a').text(owner).attr('title', ownerTitle);
+            $row.find('.frappe-timestamp').text(displayDate);
 
-            card.on('click', function() {
+            $row.on('click', function() {
                 select_trip(id, true);
             });
 
-            container.append( /* nosemgrep */ card);
+            $result.append( /* nosemgrep */ $row);
         });
+
+        container.append($('<div class="frappe-list"></div>').append($result));
     }
 
     function select_trip(id, zoom) {
         mapViewData.selectedId = id;
 
-        pageWrapper.find('.trip-card').removeClass('selected');
-        pageWrapper.find('.trip-card[data-id="' + id + '"]').addClass('selected');
+        var rows = pageWrapper.find('.list-row-container');
+        rows.removeClass('selected');
+        var selectedCard = rows.filter(function() {
+            return $(this).attr('data-id') === String(id);
+        });
+        selectedCard.addClass('selected');
 
-        var selectedCard = pageWrapper.find('.trip-card[data-id="' + id + '"]');
         if (selectedCard.length) {
             selectedCard[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
